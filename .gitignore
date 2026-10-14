@@ -1,9 +1,15 @@
+.work/
+.cache/
 node_modules/
 target/
 .venv/
-__pycache__/
 dist/
-build/
 *.log
 *.err
 out*.json
+build/
+data/*
+!data/.gitkeep
+比較.html
+__pycache__/
+*.pyc

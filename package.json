@@ -1,0 +1,6 @@
+{
+  "name": "minimal-editor-v0",
+  "private": true,
+  "type": "module",
+  "scripts": {"start": "node scripts/bootstrap.mjs", "test": "node --test tests/server.test.mjs"}
+}
