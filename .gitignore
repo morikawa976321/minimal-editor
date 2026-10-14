@@ -1,0 +1,9 @@
+node_modules/
+target/
+.venv/
+__pycache__/
+dist/
+build/
+*.log
+*.err
+out*.json
