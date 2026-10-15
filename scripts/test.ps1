@@ -16,6 +16,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'GUI launch test failed' }
     & $python tests/gui_desktop.py
     if ($LASTEXITCODE -ne 0) { throw 'Isolated desktop GUI test failed' }
+    & $python tests/edge_desktop.py
+    if ($LASTEXITCODE -ne 0) { throw 'Isolated desktop Edge launcher test failed' }
     & node tests/web-ui.mjs
     if ($LASTEXITCODE -ne 0) { throw 'Headless Edge tests failed' }
 } finally { Pop-Location }

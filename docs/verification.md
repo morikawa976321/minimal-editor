@@ -71,3 +71,15 @@
 修正後は `tests/gui-launch.mjs` が実ランチャーと実exeの `--probe` を使い、旧指定のSTARTUPINFO `{flags:257,show:0}`、新指定 `{flags:257,show:10}` を確認する。probe自身は表示しない。nativeの保存・強制終了・排他・Ctrl+A回帰試験もPASS。通常Bは古い起動元がSW_HIDEを付けても表示を再試行する。
 
 加えて `tests/gui_desktop.py` を親が実行し、本人の画面とは異なるランダム名のWindows desktopに通常GUIを起動して確認した。子が実際に接続されたdesktop名を照合し、SwitchDesktopは使わない。新ランチャー・旧SW_HIDE指定の両方でウィンドウ表示、最小化後の再起動で同じHWNDへ復帰、重複ウィンドウ0、エラーダイアログ0。結果は `.work/gui-desktop-s8o9tp4a/result.json`。試験専用ジョブの子プロセスだけを片付ける。sandboxではdesktop作成が拒否されるため、この試験は権限付きで実行した。
+
+## A採用・minimal-editorの実用入口 · 2026-10-16
+
+通常起動を本文直結へ変更し、タイトルを `minimal-editor` に固定。HTTP保存試験とEdge headless試験を再実行しPASS。15,300字、CDPの日本語変換、保存済み原稿のサーバー/ブラウザー強制終了後の復帰、未保存ジャーナルからの再読込、保存応答喪失後の追記を確認。今回の結果は `.work/web-ui-QUUp2q/result.json`。試験前の空きRAMは10.72 GiB、GUI試験は直列実行。
+
+起動対象の識別は専用プロファイル・Edgeのウィンドウクラス・タイトルをすべて照合する。実環境では `focus-editor.ps1 -ProbeOnly` の読み取り専用確認を行い、画面の前面化・キー・クリップボード操作はしていない。
+
+`tests/edge_desktop.py` を親が最終版で実行しPASS。実bootstrap/server/editor/VBS/PowerShellを `.work` の独立コピーに配置し、port43130・テスト原稿・独立プロファイル・切替しない専用desktopで検証した。同時初回2起動でbootstrap1回と同一HWND、最小化から同じウィンドウへ復帰、誤profile/titleの検出拒否、ProbeOnlyが最小化解除しないこと、実app.vbs経由の復帰、テスト原稿不変を確認。結果は `.work/edge-desktop-p6uccpze/result.json`。サーバーとEdgeを含む試験所有のプロセスはjob終了で片付けた。
+
+初回の試験はPowerShellの `communicate()` でタイムアウトした。出力をファイルへ取り、ランチャーPIDの終了を直接待つ方式に変えると成功。継承されたPIPEのEOF待ちが有力だが、初回のプロセス終了状態を記録していないため原因を断定しない。診断時のウィンドウ復帰APIは0〜5msで戻っていた。本番の起動コードはこの切り分けで変更していない。
+
+スタートメニューの `minimal-editor.lnk` は作成後にTargetPath / Arguments / WorkingDirectoryを読み戻し、旧 `Minimal Editor.lnk` が残っていないことを確認。Winキー検索の実画面を自動操作したという意味ではない。

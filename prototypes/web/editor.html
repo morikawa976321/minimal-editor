@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>A · minimal editor</title>
+<title>minimal-editor</title>
 <style>
 :root{color-scheme:dark;background:#181a1b;color:#dededb;font-family:'BIZ UDGothic','Noto Sans JP',sans-serif}
 body{margin:0}textarea{display:block;box-sizing:border-box;width:min(100%,880px);height:100dvh;margin:auto;padding:60px 48px 48px;border:0;outline:0;resize:none;background:transparent;color:inherit;font:20px/1.9 'BIZ UDGothic','Noto Sans JP',sans-serif;tab-size:4}#state{position:fixed;right:18px;top:12px;font:12px sans-serif;color:#e6b190}#state:empty{display:none}@media(max-width:600px){textarea{padding:36px 24px}}
@@ -15,7 +15,7 @@ const journalKey='unsaved:'+crypto.randomUUID();
 function journal(){try{localStorage.setItem(journalKey,JSON.stringify({text:editor.value,revision}))}catch{status('復元用コピーを保存できません')}}
 const headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'};
 async function api(path,method='GET',body){const r=await fetch('/api/'+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(5000)});if(!r.ok){const e=Error(await r.text());e.status=r.status;throw e}return r.json()}
-function status(message){state.textContent=message;document.title=message?message+' · A':'A · minimal editor'}
+function status(message){state.textContent=message}
 async function save(){if(writing||(pending===null&&!unconfirmed))return;writing=true;if(!unconfirmed){unconfirmed={text:pending,revision,lease};pending=null}
 try{const result=await api('document','PUT',unconfirmed);revision=result.revision;unconfirmed=null;failed=false;if(pending===null){localStorage.removeItem(journalKey);status('')}else journal()}
 catch(e){failed=true;pending=editor.value;status('保存できません · 本文はこの画面に残っています');}
@@ -29,6 +29,6 @@ const recoveries=Object.keys(localStorage).filter(k=>k.startsWith('unsaved:')).m
 for(const {key,raw} of recoveries){const saved=JSON.parse(raw);await api('recovery','POST',{text:saved.text});if(recoveries.length===1&&(saved.revision===revision||saved.text===editor.value)){editor.value=saved.text;pending=saved.text;journal();status('復元中')}else status('未保存の別稿あり · data を確認');if(localStorage.getItem(key)===raw)localStorage.removeItem(key)}
 if(pending!==null)save();
 editor.disabled=false;editor.focus();setInterval(async()=>{try{await api('lease','PUT',{lease});if(!editor.disabled&&state.textContent.startsWith('接続待ち'))status('')}catch(e){if(e.status===409){editor.readOnly=true;status('別の画面またはサーバーが開かれました · 閉じて開き直してください')}else status('接続待ち · 未保存の本文は復元用に保持します')}},3000);
-}catch(e){status('開けません · 別のAが開いていないか確認してください')}
+}catch(e){status('開けません · すでに開いている画面がないか確認してください')}
 window.addEventListener('pagehide',()=>{if(lease)fetch('/api/lease',{method:'DELETE',headers,body:JSON.stringify({lease}),keepalive:true}).catch(()=>{})});
 </script></html>

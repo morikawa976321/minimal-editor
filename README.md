@@ -6,11 +6,14 @@ AIと独立して一人で文章を書くための、設定機能すら持たな
 - 依頼: [docs/parent-session-prompt.md](docs/parent-session-prompt.md)
 - 状態と再開の入口: docs/STATUS.md(親セッションが作る)
 
-## V0 の入口
+## 使い方
 
-この PC では **Win → Minimal Editor → Enter**。比較ページで A・B・C を開く。
-`比較を開く.cmd` のダブルクリックでも同じページが開く。
-ローカル補助サーバーが動いている間は、生成済み `比較.html` のダブルクリックでも使える。
+この PC では **Win → minimal-editor → Enter**。本文が直接開き、自動で保存される。
+A（Edge app window）を本人が採用。タブやアドレスバーのない通常ウィンドウで、全画面固定のキオスクではない。
+すでに開いている場合は、そのウィンドウに戻る。設定画面はない。
+
+本文は `data/web.txt`（UTF-8）、直前の保存版は `data/web.txt.bak`。Aで試した原稿をそのまま継続する。
+比較用のB/Cとその原稿は保持している。`比較を開く.cmd` は引き続き比較ページを開く。
 
 | V0 | 入力欄 | 本文 |
 |---|---|---|
@@ -22,14 +25,15 @@ AIと独立して一人で文章を書くための、設定機能すら持たな
 
 ## 再構築
 
-この PC の既存 Node 24、Rust、uv 管理 Python 3.12、Edge を使う。依存パッケージの追加は不要。
+普段の起動は、この PC の既存 Node 24、Edge、Windows PowerShellを使う。依存パッケージの追加は不要。
+Rust / Python は旧B/Cとその試験だけに必要。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 node scripts/bootstrap.mjs --no-open
 powershell -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1
 ```
 
-`install-shortcut.ps1` はスタートメニューに `Minimal Editor.lnk` を1個作る。
+`install-shortcut.ps1` はスタートメニューに `minimal-editor.lnk` を1個作る。旧比較用 `Minimal Editor.lnk` がこのリポジトリのものと確認できた場合だけ置き換える。
+比較版を再構築する場合は `powershell -ExecutionPolicy Bypass -File scripts/build.ps1`。比較ページは `node scripts/bootstrap.mjs --compare`。
 再現試験は `powershell -ExecutionPolicy Bypass -File scripts/test.ps1`。GUI は非表示、テスト本文は `.work` に隔離。
 測定条件と限界は [検証記録](docs/verification.md)、判断は [判断ログ](docs/decisions.md) を参照。

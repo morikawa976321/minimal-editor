@@ -1,15 +1,25 @@
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $programs = [Environment]::GetFolderPath('Programs')
-$shortcutPath = Join-Path $programs 'Minimal Editor.lnk'
-if (Test-Path -LiteralPath $shortcutPath) {
-    $existing = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
-    if ($existing.Arguments -ne ('"' + (Join-Path $repo 'scripts\launch.vbs') + '"')) { throw 'Existing unrelated shortcut; refusing to overwrite.' }
+$shortcutPath = Join-Path $programs 'minimal-editor.lnk'
+$previousPath = Join-Path $programs 'Minimal Editor.lnk'
+$shell = New-Object -ComObject WScript.Shell
+$target = Join-Path $env:WINDIR 'System32\wscript.exe'
+$arguments = '"' + (Join-Path $repo 'scripts\app.vbs') + '"'
+foreach ($candidate in @($shortcutPath, $previousPath)) {
+    if (Test-Path -LiteralPath $candidate) {
+        $existing = $shell.CreateShortcut($candidate)
+        $expected = if ($candidate -eq $previousPath) { '"' + (Join-Path $repo 'scripts\launch.vbs') + '"' } else { $arguments }
+        if ($existing.TargetPath -ne $target -or $existing.Arguments -ne $expected) {
+            throw "Existing unrelated shortcut; refusing to change: $candidate"
+        }
+    }
 }
-$shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
-$shortcut.TargetPath = Join-Path $env:WINDIR 'System32\wscript.exe'
-$shortcut.Arguments = '"' + (Join-Path $repo 'scripts\launch.vbs') + '"'
+$shortcut = $shell.CreateShortcut($shortcutPath)
+$shortcut.TargetPath = $target
+$shortcut.Arguments = $arguments
 $shortcut.WorkingDirectory = $repo
-$shortcut.Description = 'Minimal Editor V0 comparison'
+$shortcut.Description = 'Write independently. Saved automatically on this computer.'
 $shortcut.Save()
+if (Test-Path -LiteralPath $previousPath) { Remove-Item -LiteralPath $previousPath }
 Write-Output $shortcutPath
