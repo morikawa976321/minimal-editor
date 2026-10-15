@@ -20,7 +20,7 @@ async function save(){if(writing||(pending===null&&!unconfirmed))return;writing=
 try{const result=await api('document','PUT',unconfirmed);revision=result.revision;unconfirmed=null;failed=false;if(pending===null){localStorage.removeItem(journalKey);status('')}else journal()}
 catch(e){failed=true;pending=editor.value;status('保存できません · 本文はこの画面に残っています');}
 finally{writing=false;if(pending!==null&&!failed)save()}}
-editor.addEventListener('input',()=>{pending=editor.value;journal();status('保存中');failed=false;save()});
+editor.addEventListener('input',()=>{pending=editor.value;journal();failed=false;save()});
 window.addEventListener('beforeunload',event=>{if(pending!==null||writing||failed){event.preventDefault();event.returnValue=''}});
 setInterval(()=>{if(failed)save()},2000);
 try{const acquired=await api('lease','POST');lease=acquired.lease;

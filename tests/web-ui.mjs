@@ -26,9 +26,17 @@ try{
   await waitFor(()=>evaluate('document.querySelector("textarea") && !document.querySelector("textarea").disabled'));
   const readyMs=performance.now()-started;
   stage('ready');
+  // A delayed save stays visually quiet but must still block accidental close.
+  await evaluate(`{const original=window.fetch;let hold=true;window.fetch=async(...args)=>{if(hold&&String(args[0]).endsWith('/api/document')&&args[1]?.method==='PUT'){hold=false;await new Promise(resolve=>{window.releaseTestSave=()=>{window.fetch=original;resolve()}})}return original(...args)}}`);
   const text='日本語を一人で書く。abc123\n'.repeat(900);
   const t=performance.now();await cdp('Input.insertText',{text});
+  await waitFor(()=>evaluate('typeof window.releaseTestSave==="function"'));
+  assert.equal(await evaluate('document.querySelector("#state").textContent'),'');
+  assert.equal(await evaluate(`(()=>{const e=new Event('beforeunload',{cancelable:true});window.dispatchEvent(e);return e.defaultPrevented})()`),true);
+  await evaluate('window.releaseTestSave()');
   await waitFor(()=>fs.existsSync(path.join(dir,'web.txt'))&&fs.readFileSync(path.join(dir,'web.txt'),'utf8')===text);
+  await waitFor(()=>evaluate('!Object.keys(localStorage).some(k=>k.startsWith("unsaved:"))'));
+  assert.equal(await evaluate(`(()=>{const e=new Event('beforeunload',{cancelable:true});window.dispatchEvent(e);return e.defaultPrevented})()`),false);
   const insertionMs=performance.now()-t;
   await cdp('Input.imeSetComposition',{text:'へんかん',selectionStart:0,selectionEnd:4});
   assert.ok((await evaluate('document.querySelector("textarea").value')).endsWith('へんかん'));
@@ -90,7 +98,7 @@ try{
   await evaluate('document.querySelector(".launch").click()');
   await new Promise(r=>setTimeout(r,400));
   assert.equal(await evaluate('document.querySelector("#status").textContent'),'');
-  const report={passed:true,characters:[...text].length,ready_ms:+readyMs.toFixed(2),insert_and_save_ms:+insertionMs.toFixed(2),long_draft_key_dispatch_median_ms:+keyMs[10].toFixed(2),long_draft_key_dispatch_p95_ms:+keyMs[18].toFixed(2),cdp_composition:true,force_kill_and_recovery:true,response_loss_recovery:true,file_launcher:true,artifacts:dir};
+  const report={passed:true,characters:[...text].length,ready_ms:+readyMs.toFixed(2),insert_and_save_ms:+insertionMs.toFixed(2),long_draft_key_dispatch_median_ms:+keyMs[10].toFixed(2),long_draft_key_dispatch_p95_ms:+keyMs[18].toFixed(2),quiet_save_with_unsaved_close_guard:true,cdp_composition:true,force_kill_and_recovery:true,response_loss_recovery:true,file_launcher:true,artifacts:dir};
   fs.writeFileSync(path.join(dir,'result.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 }finally{
   if(ws)ws.close();
