@@ -5,17 +5,20 @@
 #![allow(non_snake_case)]
 
 use std::{ffi::c_void, fs, io::{self, Write}, os::windows::ffi::OsStrExt, path::{Path, PathBuf}, ptr, time::Instant};
+use std::hash::{Hash,Hasher};
 type Handle = *mut c_void;
 type Hwnd = Handle;
 #[repr(C)] struct Point { x: i32, y: i32 }
 #[repr(C)] struct Rect { left: i32, top: i32, right: i32, bottom: i32 }
 #[repr(C)] struct Msg { hwnd: Hwnd, message: u32, wparam: usize, lparam: isize, time: u32, pt: Point, private: u32 }
 #[repr(C)] struct WndClass { style: u32, proc: Option<unsafe extern "system" fn(Hwnd,u32,usize,isize)->isize>, cls_extra:i32, wnd_extra:i32, instance:Handle, icon:Handle, cursor:Handle, background:Handle, menu:*const u16, name:*const u16 }
+#[repr(C)] struct StartupInfo { size:u32, reserved:*mut u16, desktop:*mut u16, title:*mut u16, x:u32, y:u32, width:u32, height:u32, x_chars:u32, y_chars:u32, fill:u32, flags:u32, show:u16, reserved_size:u16, reserved_bytes:*mut u8, input:Handle, output:Handle, error:Handle }
 #[link(name="user32")] extern "system" {
     fn RegisterClassW(c:*const WndClass)->u16;
     fn CreateWindowExW(ex:u32, cls:*const u16, title:*const u16, style:u32, x:i32,y:i32,w:i32,h:i32,parent:Hwnd,menu:Handle,instance:Handle,param:Handle)->Hwnd;
     fn DefWindowProcW(h:Hwnd,m:u32,w:usize,l:isize)->isize;
     fn ShowWindow(h:Hwnd,n:i32)->i32;
+    fn IsWindowVisible(h:Hwnd)->i32;
     fn SetFocus(h:Hwnd)->Hwnd;
     fn GetMessageW(m:*mut Msg,h:Hwnd,min:u32,max:u32)->i32;
     fn TranslateMessage(m:*const Msg)->i32;
@@ -32,9 +35,13 @@ type Hwnd = Handle;
     fn MessageBoxW(h:Hwnd,text:*const u16,title:*const u16,kind:u32)->i32;
     fn SetProcessDPIAware()->i32;
     fn GetKeyState(key:i32)->i16;
+    fn FindWindowW(class:*const u16,title:*const u16)->Hwnd;
+    fn ShowWindowAsync(h:Hwnd,n:i32)->i32;
+    fn SetForegroundWindow(h:Hwnd)->i32;
 }
 #[link(name="kernel32")] extern "system" {
     fn GetModuleHandleW(name:*const u16)->Handle;
+    fn GetStartupInfoW(info:*mut StartupInfo);
     fn CreateFileW(name:*const u16,access:u32,share:u32,security:Handle,creation:u32,flags:u32,template:Handle)->Handle;
     fn CloseHandle(h:Handle)->i32;
     fn ReplaceFileW(target:*const u16,replacement:*const u16,backup:*const u16,flags:u32,exclude:Handle,reserved:Handle)->i32;
@@ -161,7 +168,25 @@ unsafe fn run()->Result<(),String> {
     if hidden && explicit.is_none() { return Err("Hidden tests require --data-dir; personal drafts are never used.".into()); }
     let dir=match explicit { Some(p)=>PathBuf::from(p),None=>std::env::current_exe().map_err(|e|e.to_string())?.parent().and_then(Path::parent).ok_or("Expected executable in build/")?.join("data") };
     fs::create_dir_all(&dir).map_err(|e|e.to_string())?;
-    let _lock=lock(&dir).map_err(|e|format!("同じ原稿は既に開かれているか、保存先にアクセスできません。\n{e}"))?;
+    let canonical=fs::canonicalize(&dir).map_err(|e|e.to_string())?;
+    let mut hash=std::collections::hash_map::DefaultHasher::new();
+    canonical.to_string_lossy().to_lowercase().hash(&mut hash);
+    let class=wide(&format!("MinimalEditorNativeV0-{:016x}",hash.finish()));
+    let _lock=match lock(&dir) {
+        Ok(lock)=>lock,
+        Err(e)=>{
+            if !hidden && e.raw_os_error()==Some(32) {
+                // A user's second launch reopens the existing window. Hidden
+                // tests never activate another window or bypass lock rejection.
+                for _ in 0..40 {
+                    let existing=FindWindowW(class.as_ptr(),ptr::null());
+                    if !existing.is_null() { ShowWindowAsync(existing,9); SetForegroundWindow(existing); return Ok(()); }
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                }
+            }
+            return Err(format!("同じ原稿は既に開かれているか、保存先にアクセスできません。\n{e}"));
+        }
+    };
     let path=dir.join("native.txt");
     let disk=read_optional(&path).map_err(|e|format!("原稿を読めないため、編集を開始しません。\n{e}"))?;
     let initial=std::str::from_utf8(disk.as_deref().unwrap_or(b"")).map_err(|e|format!("UTF-8 として読めないため、編集を開始しません。\n{e}"))?;
@@ -171,7 +196,6 @@ unsafe fn run()->Result<(),String> {
     SetProcessDPIAware();
     let instance=GetModuleHandleW(ptr::null());
     let brush=CreateSolidBrush(BG);
-    let class=wide("MinimalEditorNativeV0");
     let wc=WndClass{style:3,proc:Some(window_proc),cls_extra:0,wnd_extra:0,instance,icon:ptr::null_mut(),cursor:LoadCursorW(ptr::null_mut(),32512usize as *const u16),background:brush,menu:ptr::null(),name:class.as_ptr()};
     if RegisterClassW(&wc)==0 { return Err(io::Error::last_os_error().to_string()); }
     let state=Box::into_raw(Box::new(State{edit:ptr::null_mut(),window:ptr::null_mut(),brush,font:ptr::null_mut(),path,disk,active:false,dirty:false,last_error:None,save_count:0,hidden}));
@@ -263,14 +287,19 @@ unsafe fn run()->Result<(),String> {
             SendMessageW((*state).edit,0x00b1,usize::MAX,-1);
         }
         let chars=get_text((*state).edit).map_err(|e|e.to_string())?.chars().count();
-        let report=format!("{{\"ok\":true,\"hidden\":true,\"characters\":{chars},\"ready_ms\":{ready_ms:.3},\"replace_and_flush_ms\":{replace_ms:.3},\"append_and_flush_ms\":{append_ms:.3},\"wm_char_and_flush_ms\":{wm_char_ms:.3},\"wm_char_units\":{wm_char_units},\"surrogate_recovery\":{test},\"save_error_recovery\":{test},\"external_change_refused\":{test},\"ctrl_a_select_all\":{test},\"save_count\":{},\"input_path\":\"EM_REPLACESEL and Unicode WM_CHAR; no real IME or Handy exercised\"}}",(*state).save_count);
+        let mut startup:StartupInfo=std::mem::zeroed();GetStartupInfoW(&mut startup);
+        let report=format!("{{\"ok\":true,\"hidden\":true,\"startup_flags\":{},\"startup_show\":{},\"characters\":{chars},\"ready_ms\":{ready_ms:.3},\"replace_and_flush_ms\":{replace_ms:.3},\"append_and_flush_ms\":{append_ms:.3},\"wm_char_and_flush_ms\":{wm_char_ms:.3},\"wm_char_units\":{wm_char_units},\"surrogate_recovery\":{test},\"save_error_recovery\":{test},\"external_change_refused\":{test},\"ctrl_a_select_all\":{test},\"save_count\":{},\"input_path\":\"EM_REPLACESEL and Unicode WM_CHAR; no real IME or Handy exercised\"}}",startup.flags,startup.show,(*state).save_count);
         fs::write(dir.join(if probe {"probe-result.json"} else {"test-result.json"}),&report).map_err(|e|e.to_string())?;
         println!("{report}");
         if let Some(i)=args.iter().position(|a|a=="--hold-ms") { let ms=args.get(i+1).ok_or("--hold-ms requires milliseconds")?.parse::<u64>().map_err(|e|e.to_string())?; std::thread::sleep(std::time::Duration::from_millis(ms)); }
         // Bypass WM_CLOSE: tests prove EN_CHANGE saved before any close handler.
         DestroyWindow((*state).window);
     } else {
-        ShowWindow((*state).window,5); SetFocus((*state).edit);
+        ShowWindow((*state).window,5);
+        // A currently running older launcher may still pass SW_HIDE. Windows
+        // consumes that startup override on the first ShowWindow only.
+        if IsWindowVisible((*state).window)==0 { ShowWindow((*state).window,5); }
+        SetFocus((*state).edit);
         let mut msg:Msg=std::mem::zeroed();
         loop {
             let n=GetMessageW(&mut msg,ptr::null_mut(),0,0);

@@ -80,7 +80,10 @@ export function createEditorServer({port=43127,token,dataDir=path.join(root,'dat
 }
 export function comparisonHtml(port,token){return fs.readFileSync(path.join(root,'prototypes/compare.template.html'),'utf8').replaceAll('__PORT__',String(port)).replaceAll('__TOKEN__',token)}
 export const edge=path.join(process.env['ProgramFiles(x86)']||'C:\\Program Files (x86)','Microsoft/Edge/Application/msedge.exe');
-export function startProcess(exe,args){return new Promise((resolve,reject)=>{const child=spawn(exe,args,{cwd:root,detached:true,stdio:'ignore',windowsHide:true});child.once('error',reject);child.once('spawn',()=>{child.unref();resolve()})})}
+// All targets here are GUI-subsystem executables (Edge, native, pythonw).
+// SW_HIDE suppresses native's first ShowWindow too, leaving an invisible lock owner.
+// The separate Node helper still uses windowsHide:true in bootstrap.mjs.
+export function startProcess(exe,args){return new Promise((resolve,reject)=>{const child=spawn(exe,args,{cwd:root,detached:true,stdio:'ignore',windowsHide:false});child.once('error',reject);child.once('spawn',()=>{child.unref();resolve()})})}
 export function openEdge(url){return startProcess(edge,['--disable-gpu','--no-first-run','--no-default-browser-check','--user-data-dir='+path.join(root,'.work/edge-profile'),'--app='+url])}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const config=JSON.parse(fs.readFileSync(path.join(root,'.work/server.json'),'utf8'));

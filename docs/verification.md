@@ -63,3 +63,11 @@
 - B/Cも入力イベント処理やfsync完了前のkill、IME未確定文字、電源断までは保証しない。試験は保存完了後のプロセス強制終了。
 - 3方式の `.bak` は直前の1版だけ。保存履歴の一覧ではない。
 - file://の比較HTMLから各アプリを開くには補助サーバーが必要。PC再起動後は1個のショートカットから起動する。
+
+## 本人試用後の起動不具合 · 2026-10-15
+
+本人報告でBの初回起動が非表示になっていたことが判明。旧実装の `windowsHide:true` がSTARTUPINFOのSW_HIDEとなり、標準ShowWindowの初回に優先されていた。再クリックで起動した2個目だけがロックエラーを表示した。最初のhidden試験ではこの経路を検出できていなかった。
+
+修正後は `tests/gui-launch.mjs` が実ランチャーと実exeの `--probe` を使い、旧指定のSTARTUPINFO `{flags:257,show:0}`、新指定 `{flags:257,show:10}` を確認する。probe自身は表示しない。nativeの保存・強制終了・排他・Ctrl+A回帰試験もPASS。通常Bは古い起動元がSW_HIDEを付けても表示を再試行する。
+
+加えて `tests/gui_desktop.py` を親が実行し、本人の画面とは異なるランダム名のWindows desktopに通常GUIを起動して確認した。子が実際に接続されたdesktop名を照合し、SwitchDesktopは使わない。新ランチャー・旧SW_HIDE指定の両方でウィンドウ表示、最小化後の再起動で同じHWNDへ復帰、重複ウィンドウ0、エラーダイアログ0。結果は `.work/gui-desktop-s8o9tp4a/result.json`。試験専用ジョブの子プロセスだけを片付ける。sandboxではdesktop作成が拒否されるため、この試験は権限付きで実行した。
