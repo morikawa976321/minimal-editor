@@ -73,6 +73,20 @@ GUIの起動は `windowsHide:false`、背景Nodeだけ `true`。さらにBの通
 
 根拠: [Microsoft ShowWindow仕様](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow) は最初の呼出しが起動元のSTARTUPINFOに従うことを明記している。非表示試験だけで通常ランチャーの表示まで確認済みとした点を訂正する。覆る条件は別の起動経路や二重起動で問題が再現する場合。
 
+## 2026-10-15 · 3案の体感と未確定文字の配色
+
+本人の原文:
+
+> どれも悪くない。見た目について、B,Cは変換前の日本語の背景と文字色が反転するのがいやだが、これは設定でどうにかなる問題？
+
+**astra の判断**: 3方式とも悪くないという評価を記録し、方式決定はまだ行わない。未確定日本語の反転を嫌うことを本人の外観基準に追加する。今回は設定で直せるかの調査にとどめ、稼働中のエディターやIME設定を変更しない。
+
+現行Bは標準EDITで、アプリが指定している本文色だけではIME表示全体の配色を制御していない。`EM_SETIMECOLOR` というAPIはあるが、[Microsoft仕様](https://learn.microsoft.com/en-us/windows/win32/controls/em-setimecolor)ではアジア言語版Rich Edit 1.0限定であり、現行Bの標準EDITに使える解決策ではない。
+
+Cには通常選択の `selectbackground` / `selectforeground` があるが、未確定IME表示と同一視しない。[Tk 8.6系のWindows実装](https://raw.githubusercontent.com/tcltk/tk/core-8-6-branch/win/tkWinX.c)のHandleIMECompositionは確定文字列以外を処理せず、TkWinChildProcがDefWindowProcへ渡す。この経路から、通常選択色の変更だけで本人の見た反転が直るとは判断できない。
+
+結論は「単純な配色設定だけで解決できるとは確認できない。アプリ側のIME描画対応・入力欄の変更を伴う余地がある」。通常本文の色を変更しただけで解決済みとしない。Aに同じ不満が出ていないことは方式比較の材料になるが、本人の採用決定には置き換えない。覆る条件は実機IMEでアプリ内の小さな変更だけで改善することを検証できた場合。
+
 ## 本人待ち
 
 ### 意思決定カード 1 · 使い続けたいのはどれ？
