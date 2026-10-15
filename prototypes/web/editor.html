@@ -2,8 +2,8 @@
 <html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>minimal-editor</title>
 <style>
-:root{color-scheme:dark;background:#181a1b;color:#dededb;font-family:'BIZ UDGothic','Noto Sans JP',sans-serif}
-body{margin:0}textarea{display:block;box-sizing:border-box;width:min(100%,880px);height:100dvh;margin:auto;padding:60px 48px 48px;border:0;outline:0;resize:none;background:transparent;color:inherit;font:20px/1.9 'BIZ UDGothic','Noto Sans JP',sans-serif;tab-size:4}#state{position:fixed;right:18px;top:12px;font:12px sans-serif;color:#e6b190}#state:empty{display:none}@media(max-width:600px){textarea{padding:36px 24px}}
+:root{color-scheme:dark;background:#202020;color:#dfdfdf;font-family:'Intel One Mono','BIZ UDGothic',monospace}
+body{margin:0}textarea{display:block;box-sizing:border-box;width:min(100%,1100px);height:100dvh;margin:auto;padding:60px 48px 48px;border:0;outline:0;resize:none;background:transparent;color:inherit;font:20px/1.9 'Intel One Mono','BIZ UDGothic',monospace;tab-size:4;scrollbar-color:#666 #202020}textarea::selection{background:#555;color:#dfdfdf}#state{position:fixed;right:18px;top:12px;font:12px 'Intel One Mono','BIZ UDGothic',monospace;color:#b0b0b0}#state:empty{display:none}@media(max-width:600px){textarea{padding:36px 24px}}
 </style>
 <span id="state" role="status" aria-live="polite"></span><textarea id="editor" aria-label="本文" spellcheck="false" disabled></textarea>
 <script type="module">

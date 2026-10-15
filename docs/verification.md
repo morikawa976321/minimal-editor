@@ -83,3 +83,7 @@
 初回の試験はPowerShellの `communicate()` でタイムアウトした。出力をファイルへ取り、ランチャーPIDの終了を直接待つ方式に変えると成功。継承されたPIPEのEOF待ちが有力だが、初回のプロセス終了状態を記録していないため原因を断定しない。診断時のウィンドウ復帰APIは0〜5msで戻っていた。本番の起動コードはこの切り分けで変更していない。
 
 スタートメニューの `minimal-editor.lnk` は作成後にTargetPath / Arguments / WorkingDirectoryを読み戻し、旧 `Minimal Editor.lnk` が残っていないことを確認。Winキー検索の実画面を自動操作したという意味ではない。
+
+## 外観調整 · 2026-10-16
+
+CSSだけの変更につき保存・起動の全試験は繰り返さず、実CSSを抽出したテスト用サンプルを専用headless Edgeで描画。幅1400px時にtextarea1100px、幅500px時にtextarea/ページとも500px、背景rgb(32,32,32)、本文rgb(223,223,223)を確認。CDPの実描画フォントは英字Intel One Mono、日本語BIZ UDGothic。スクリーンショット `.work/style-check-omP9pD/wide.png` を目視確認。テストページ・プロファイルは `.work` のみ、本人の原稿は読んでいない。
