@@ -32,7 +32,8 @@ def child(folder, expected_desktop):
     assert edge.is_file(), "Existing Edge not found"
     isolated = folder / "app"
     for relative in ("scripts/app.vbs", "scripts/launch-editor.ps1", "scripts/focus-editor.ps1",
-                     "scripts/bootstrap.mjs", "scripts/server.mjs", "prototypes/web/editor.html"):
+                     "scripts/bootstrap.mjs", "scripts/server.mjs", "scripts/memo-store.mjs",
+                     "scripts/upgrade-server.ps1", "prototypes/web/editor.html"):
         target = isolated / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / relative, target)

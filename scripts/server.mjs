@@ -4,27 +4,15 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
+import {createMemoStore} from './memo-store.mjs';
+export {durableWrite} from './memo-store.mjs';
 
 export const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const hash=text=>crypto.createHash('sha256').update(text).digest('hex');
-export function durableWrite(file,text){
-  const temporary=file+'.tmp';
-  const fd=fs.openSync(temporary,'w');
-  try{fs.writeFileSync(fd,text,'utf8');fs.fsyncSync(fd)}finally{fs.closeSync(fd)}
-  if(fs.existsSync(file)){
-    fs.copyFileSync(file,file+'.bak.tmp');
-    const backup=fs.openSync(file+'.bak.tmp','r+');try{fs.fsyncSync(backup)}finally{fs.closeSync(backup)}
-    fs.renameSync(file+'.bak.tmp',file+'.bak');
-  }
-  fs.renameSync(temporary,file);
-}
-function readText(file){try{return new TextDecoder('utf-8',{fatal:true}).decode(fs.readFileSync(file))}catch(e){if(e.code==='ENOENT')return '';throw e}}
 export function createEditorServer({port=43127,token,dataDir=path.join(root,'data'),launch}={}){
   if(!token)throw Error('Token required');
   fs.mkdirSync(dataDir,{recursive:true});
-  const file=path.join(dataDir,'web.txt');
-  let text='',revision=hash(''),loadError=null,lease=null,leaseUntil=0;
-  try{text=readText(file);revision=hash(text)}catch(e){loadError=e}
+  const memos=createMemoStore(dataDir);
+  let lease=null,leaseUntil=0;
   const send=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data))};
   const server=http.createServer(async(req,res)=>{
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');
@@ -47,34 +35,38 @@ export function createEditorServer({port=43127,token,dataDir=path.join(root,'dat
       const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>4*1024*1024){send(res,413,{error:'Too large'});return}chunks.push(chunk)}
       const raw=new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks));
       const body=raw?JSON.parse(raw):{};
-      if(url.pathname==='/api/status'&&req.method==='GET'){send(res,200,{app:'minimal-editor-v0'});return}
+      if(url.pathname==='/api/status'&&req.method==='GET'){send(res,200,{app:'minimal-editor-v0',protocol:2});return}
       if(url.pathname==='/api/document'&&req.method==='GET'){
-        if(loadError){text=readText(file);revision=hash(text);loadError=null}
-        send(res,200,{text,revision});return
+        const {text,revision}=memos.get('legacy');send(res,200,{text,revision});return
       }
+      if(url.pathname==='/api/memos'&&req.method==='GET'){send(res,200,memos.list());return}
+      const memoRoute=/^\/api\/memos\/([^/]+)$/.exec(url.pathname);
+      if(memoRoute&&req.method==='GET'){send(res,200,memos.get(memoRoute[1]));return}
       if(url.pathname==='/api/lease'){
         if(req.method==='POST'){if(lease&&Date.now()<leaseUntil){send(res,409,{error:'Already open'});return}lease=crypto.randomUUID();leaseUntil=Date.now()+10000;send(res,200,{lease});return}
         if(body.lease!==lease){send(res,409,{error:'Invalid lease'});return}
         if(req.method==='PUT'){leaseUntil=Date.now()+10000;send(res,200,{});return}
         if(req.method==='DELETE'){lease=null;send(res,200,{});return}
       }
-      if(url.pathname==='/api/document'&&req.method==='PUT'){
-        if(loadError)throw loadError;
+      if((url.pathname==='/api/document'&&req.method==='PUT')||
+         (memoRoute&&req.method==='PUT')||
+         (url.pathname==='/api/memos'&&req.method==='POST')||
+         (url.pathname==='/api/active'&&req.method==='PUT')){
         if(!lease||body.lease!==lease||Date.now()>leaseUntil){send(res,409,{error:'Lease lost'});return}
-        if(typeof body.text!=='string'){send(res,400,{error:'Text required'});return}
-        if(readText(file)!==text){send(res,409,{error:'File changed outside editor; original retained'});return}
-        // A request whose response was lost is safe to acknowledge again.
-        if(body.revision!==revision){if(body.text===text){send(res,200,{revision});return}send(res,409,{error:'Document changed'});return}
-        durableWrite(file,body.text);text=body.text;revision=hash(text);leaseUntil=Date.now()+10000;send(res,200,{revision});return
+        let result;
+        if(url.pathname==='/api/memos')result=memos.create();
+        else if(url.pathname==='/api/active'){memos.activate(body.id);result={}}
+        else{result=memos.save(memoRoute?memoRoute[1]:'legacy',body);if(!memoRoute)result={revision:result.revision}}
+        leaseUntil=Date.now()+10000;send(res,200,result);return
       }
       if(url.pathname==='/api/recovery'&&req.method==='POST'&&typeof body.text==='string'){
-        durableWrite(path.join(dataDir,'web-recovery-'+Date.now()+'-'+crypto.randomUUID()+'.txt'),body.text);send(res,200,{});return
+        memos.recover(body.text,body.memoId);send(res,200,{});return
       }
       if(url.pathname==='/api/launch'&&req.method==='POST'&&['web','native','tk'].includes(body.kind)){
         if(!launch)throw Error('Launch unavailable');await launch(body.kind);send(res,200,{});return
       }
       send(res,404,{error:'Not found'});
-    }catch(e){send(res,500,{error:String(e.message)})}
+    }catch(e){send(res,e.status||500,{error:String(e.message)})}
   });
   return server;
 }

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'">
+<title>行間と文字間隔 · minimal-editor</title>
+<style>
+  :root { color-scheme: dark; background: #202020; color: #dfdfdf; font-family: 'Intel One Mono','BIZ UDGothic',monospace; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .controls { max-width: 1100px; margin: 0 auto; padding: 28px 48px 0; }
+  h1 { margin: 0 0 22px; font-size: 16px; font-weight: 400; }
+  .adjustments { display: flex; flex-wrap: wrap; gap: 24px 48px; }
+  .adjustment { flex: 1 1 260px; }
+  .value-row { display: flex; align-items: center; gap: 12px; }
+  label, button, input { font: inherit; font-size: 14px; }
+  input[type=text] { width: 88px; border: 0; border-radius: 2px; padding: 9px 10px; color: inherit; background: #303030; }
+  input[aria-invalid=true] { outline: 1px solid #dfb8a5; }
+  input[type=range] { display: block; width: 100%; margin: 16px 0 8px; accent-color: #bfbfbf; }
+  .unit, .hint, #copy-status { color: #aaa; font-size: 12px; }
+  .hint { margin: 0; line-height: 1.6; }
+  .presets { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 12px; }
+  .presets button[aria-pressed=true] { background: #555; }
+  .source { margin-bottom: 24px; }
+  a { color: inherit; text-underline-offset: 3px; }
+  .result-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+  #result { flex: 1 1 460px; width: auto; font-size: 12px; }
+  button { border: 0; border-radius: 2px; padding: 9px 12px; background: #383838; color: inherit; cursor: pointer; }
+  button:hover { background: #444; }
+  :focus-visible { outline: 2px solid #aaa; outline-offset: 3px; }
+  .sample-label { display: block; margin-top: 24px; color: #aaa; font-size: 12px; }
+  #sample { display: block; margin: 0 auto; width: 100%; max-width: 1100px; height: 65vh; min-height: 420px; padding: 36px 48px 60px; border: 0; outline: 0; resize: vertical; background: #202020; color: #dfdfdf; font: 20px/1.9 'Intel One Mono','BIZ UDGothic',monospace; letter-spacing: 0; tab-size: 4; }
+  @media (max-width: 600px) { .controls { padding: 24px 24px 0; } #sample { padding: 32px 24px; } .adjustments { gap: 22px; } }
+</style>
+</head>
+<body>
+<main>
+  <section class="controls" aria-label="文字組みの検証">
+    <h1>行間と文字間隔</h1>
+    <div class="presets" role="group" aria-label="比較用プリセット">
+      <button type="button" data-line="1.5" data-letter="0" aria-pressed="false">等幅の参考 · 1.5 / 0</button>
+      <button type="button" data-line="1.5" data-letter="0.02" aria-pressed="false">本文20pxの参考 · 1.5 / 0.02</button>
+      <button id="reset" type="button" data-line="1.9" data-letter="0" aria-pressed="true">現在 · 1.9 / 0</button>
+    </div>
+    <p class="hint source">行間（倍） / 文字間隔（em）。参考値は<a href="https://design.digital.go.jp/dads/foundations/typography/" target="_blank" rel="noopener noreferrer">デジタル庁の文字組み</a>（Mono／Std20N150）から。異なる書体での値なので、最適値ではなく比較の出発点です。</p>
+    <div class="adjustments">
+      <div class="adjustment">
+        <div class="value-row"><label for="line-value">行間</label><input id="line-value" type="text" inputmode="decimal" value="1.9" aria-describedby="line-hint" autocomplete="off" spellcheck="false"><span class="unit">倍</span><output id="line-pixels" class="unit">38 px</output></div>
+        <input id="line-range" type="range" min="1" max="3" step="0.05" value="1.9" aria-label="行間のスライダー">
+        <p id="line-hint" class="hint">1.0–3.0 ／ 現在のアプリは 1.9</p>
+      </div>
+      <div class="adjustment">
+        <div class="value-row"><label for="letter-value">文字間隔</label><input id="letter-value" type="text" inputmode="decimal" value="0" aria-describedby="letter-hint" autocomplete="off" spellcheck="false"><span class="unit">em</span><output id="letter-pixels" class="unit">0 px</output></div>
+        <input id="letter-range" type="range" min="-0.1" max="0.2" step="0.005" value="0" aria-label="文字間隔のスライダー">
+        <p id="letter-hint" class="hint">−0.1–0.2 ／ 現在のアプリは 0</p>
+      </div>
+    </div>
+    <div class="result-row">
+      <input id="result" type="text" readonly aria-label="チャットに返す調整値">
+      <button id="copy" type="button">結果をコピー</button>
+      <span id="copy-status" role="status"></span>
+    </div>
+    <label class="sample-label" for="sample">試し書き・貼り付け可（保存されません）</label>
+  </section>
+  <textarea id="sample" aria-label="文字組みのサンプル・試し書き" spellcheck="false">窓の外を見ながら、今日のことを少しずつ書く。言葉を急いで選ばず、浮かんだ順に置いていく。短い文と長い文を並べたときに、目が自然に次の行へ移るかを確かめる。
+
+読みやすい間隔は、文字の形だけでは決まらない。同じ文章でも、行間を広げれば景色が変わり、文字間隔を詰めれば一行の長さも変わる。画面を少し離れて見たり、しばらく書き続けたりしながら、自分に合うところを探す。この段落は折り返しを含む文章の読み心地を比べるために、少し長めにしてある。
+
+今日は、歩いた。
+帰り道に、小さな店を見つけた。
+明日も同じ道を通るかもしれない。
+
+The room was quiet. I opened a blank page and began to write.
+minimum, morning, rhythm — 0123456789 / 2026-10-16
+
+## 作業のメモ
+- 「本文」と『引用』、句読点。、括弧（例）を見比べる。
+- sample = { "name": "note", "count": 123 }; // 文字と記号
+- 日本語と English、数字 12345 が混ざる行を確かめる。
+
+この下に、自分の文章を貼り付けて試せます。
+</textarea>
+</main>
+<script>
+  const sample = document.getElementById('sample');
+  const result = document.getElementById('result');
+  const copyStatus = document.getElementById('copy-status');
+  const presets = [...document.querySelectorAll('.presets button')];
+  const format = value => String(Number(value.toFixed(6)));
+  const controls = [
+    { name: 'line', value: 1.9, initial: 1.9, min: 1, max: 3, property: 'lineHeight', suffix: '' },
+    { name: 'letter', value: 0, initial: 0, min: -0.1, max: 0.2, property: 'letterSpacing', suffix: 'em' },
+  ];
+  function render(control, updateText = true) {
+    if (updateText) control.text.value = format(control.value);
+    control.text.removeAttribute('aria-invalid');
+    control.range.value = control.value;
+    control.range.setAttribute('aria-valuetext', `${format(control.value)}${control.suffix || '倍'}`);
+    sample.style[control.property] = `${control.value}${control.suffix}`;
+    document.getElementById(`${control.name}-pixels`).textContent = `${format(control.value * 20)} px`;
+    result.value = `minimal-editor：行間 ${format(controls[0].value)}倍、文字間隔 ${format(controls[1].value)}em（文字サイズ 20px）`;
+    copyStatus.textContent = '';
+    for (const preset of presets) {
+      preset.setAttribute('aria-pressed', String(Number(preset.dataset.line) === controls[0].value && Number(preset.dataset.letter) === controls[1].value));
+    }
+  }
+  for (const control of controls) {
+    control.text = document.getElementById(`${control.name}-value`);
+    control.range = document.getElementById(`${control.name}-range`);
+    control.range.addEventListener('input', () => { control.value = Number(control.range.value); render(control); });
+    control.text.addEventListener('input', () => {
+      const raw = control.text.value.trim();
+      const value = Number(raw);
+      if (!raw || !Number.isFinite(value) || value < control.min || value > control.max) {
+        control.text.setAttribute('aria-invalid', 'true');
+        return;
+      }
+      control.value = value;
+      render(control, false);
+    });
+    control.text.addEventListener('blur', () => render(control));
+    control.text.addEventListener('keydown', event => { if (event.key === 'Enter') control.text.blur(); });
+    render(control);
+  }
+  for (const preset of presets) {
+    preset.addEventListener('click', () => {
+      for (const control of controls) { control.value = Number(preset.dataset[control.name]); render(control); }
+    });
+  }
+  document.getElementById('copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(result.value);
+      copyStatus.textContent = 'コピーしました';
+    } catch {
+      result.focus();
+      result.select();
+      copyStatus.textContent = 'Ctrl+C でコピーできます';
+    }
+  });
+</script>
+</body>
+</html>
