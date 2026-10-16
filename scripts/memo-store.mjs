@@ -20,6 +20,7 @@ export function durableWrite(file,text){
 }
 function fault(status,message){return Object.assign(Error(message),{status})}
 const validId=id=>typeof id==='string'&&(id==='legacy'||/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id));
+const validTitle=title=>typeof title==='string'&&title.length>0&&title.length<=200&&title===title.trim()&&!/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(title);
 
 export function createMemoStore(dataDir,{now=Date.now}={}){
   const indexFile=path.join(dataDir,'index.json'),cache=new Map(),checkpoints=new Map();
@@ -48,6 +49,7 @@ export function createMemoStore(dataDir,{now=Date.now}={}){
     const ids=new Set();
     for(const memo of value.memos){
       if(!memo||!validId(memo.id)||typeof memo.createdAt!=='string'||!Number.isFinite(Date.parse(memo.createdAt))||ids.has(memo.id))throw Error('Invalid memo index');
+      if(memo.title!==undefined&&!validTitle(memo.title))throw Error('Invalid memo title');
       ids.add(memo.id);
     }
     if(!ids.has('legacy')||!ids.has(value.lastId))throw Error('Invalid memo index');
@@ -73,7 +75,14 @@ export function createMemoStore(dataDir,{now=Date.now}={}){
   }
   return {
     get,
-    list(){ensureIndex();return {lastId:index.lastId,memos:index.memos.map(m=>({...m,title:get(m.id).text.split(/\r?\n/).find(line=>line.trim())?.trim().slice(0,80)||'無題'})).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)||a.id.localeCompare(b.id))}},
+    list(){ensureIndex();return {lastId:index.lastId,memos:index.memos.map(m=>{const text=get(m.id).text;return {...m,title:m.title??(text.split(/\r?\n/).find(line=>line.trim())?.trim().slice(0,80)||'無題')}}).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)||a.id.localeCompare(b.id))}},
+    rename(id,title){
+      requireMemo(id);
+      if(typeof title!=='string'||/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(title)||!validTitle(title.trim()))throw fault(400,'Invalid memo title');
+      title=title.trim();
+      if(index.memos.find(m=>m.id===id).title!==title)persist({...index,memos:index.memos.map(m=>m.id===id?{...m,title}:m)});
+      return {id,title};
+    },
     create(){
       ensureIndex();fs.mkdirSync(path.join(dataDir,'memos'),{recursive:true});
       const id=crypto.randomUUID(),file=fileFor(id),fd=fs.openSync(file,'wx');

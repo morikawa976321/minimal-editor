@@ -25,6 +25,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 .memo{display:block;width:100%;text-align:left;padding:12px 16px;border:0;border-radius:4px;background:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:16px;line-height:1.5}
 .memo[aria-selected="true"]{background:#414141}
 .memo:hover{background:#373737}
+.title-edit{box-sizing:border-box;background:#414141}
+.title-edit input{box-sizing:border-box;width:100%;padding:0;border:0;background:transparent;color:inherit;font:inherit;line-height:inherit;outline-offset:4px}
+.title-error{margin:8px 0 0;font-size:12px;white-space:normal;color:#dfb8a5}
 .memo:focus-visible,#close:focus-visible{outline:1px solid #aaa;outline-offset:-2px}
 @media(max-width:600px){textarea{padding:36px 24px}}
 </style>
@@ -76,7 +79,7 @@ const headers={Authorization:'Bearer '+token,'Content-Type':'application/json'};
 const sessionId=crypto.randomUUID();
 let memoId='legacy',revision,lease,pending=null,unconfirmed=null,saveTask=null;
 let failed=false,ready=false,busy=false,leaseLost=false,notice='';
-let choices=[],selected=0,position=null;
+let choices=[],selected=0,position=null,renaming=null;
 const journalKey=()=>`unsaved:${sessionId}:${memoId}`;
 function status(message=''){state.textContent=message||notice}
 function journal(){
@@ -117,6 +120,7 @@ setInterval(()=>{if(failed&&!busy&&!leaseLost)void save()},2000);
 function rememberPosition(){position={start:editor.selectionStart,end:editor.selectionEnd,scroll:editor.scrollTop}}
 function closePicker(){
   if(busy)return;
+  if(renaming)cancelRename();
   overlay.hidden=true;editor.focus();
   if(position){editor.setSelectionRange(position.start,position.end);editor.scrollTop=position.scroll}
 }
@@ -126,9 +130,38 @@ function renderList(){
     const row=document.createElement('button');row.type='button';row.className='memo';
     row.id='memo-option-'+index;row.tabIndex=-1;row.setAttribute('role','option');
     row.setAttribute('aria-selected',String(index===selected));row.textContent=memo.title;
-    row.addEventListener('click',()=>void switchMemo(memo.id,{create:!!memo.create}));list.append(row);
+    row.addEventListener('pointerenter',()=>{if(!busy&&!renaming){selected=index;highlight()}});
+    row.addEventListener('click',()=>{if(!renaming)void switchMemo(memo.id,{create:!!memo.create})});list.append(row);
   });
   highlight();
+}
+function cancelRename(){
+  if(busy||!renaming)return;
+  renaming=null;renderList();list.focus();
+}
+function beginRename(){
+  if(busy||leaseLost||renaming)return;
+  const memo=choices[selected];if(!memo||memo.create)return;
+  const row=document.createElement('div');row.className='memo title-edit';
+  row.id='memo-option-'+selected;row.setAttribute('role','option');row.setAttribute('aria-selected','true');
+  const input=document.createElement('input');input.id='title-input';input.type='text';input.maxLength=200;
+  input.value=memo.title;input.setAttribute('aria-label','メモのタイトル');input.autocomplete='off';
+  const error=document.createElement('p');error.className='title-error';error.setAttribute('role','alert');
+  row.append(input,error);list.children[selected].replaceWith(row);
+  renaming={memo,input,error};input.focus();input.select();
+}
+async function confirmRename(){
+  if(busy||!renaming||leaseLost)return;
+  const edit=renaming,title=edit.input.value.trim();
+  if(!title||title.length>200||/[\x00-\x1f\x7f]/.test(title)){
+    edit.error.textContent='タイトルを1〜200文字で入力してください';return;
+  }
+  busy=true;edit.input.readOnly=true;edit.error.textContent='';
+  try{
+    await api('memos/'+edit.memo.id+'/title','PUT',{lease,title});
+    edit.memo.title=title;renaming=null;renderList();list.focus();
+  }catch{edit.error.textContent='変更を保存できません · Enterで再試行、Escで取消'}
+  finally{busy=false;edit.input.readOnly=false;if(renaming)edit.input.focus()}
 }
 function highlight(){
   for(let i=0;i<list.children.length;i++)list.children[i].setAttribute('aria-selected',String(i===selected));
@@ -167,7 +200,19 @@ async function switchMemo(id,{create=false}={}){
 document.querySelector('#close').addEventListener('click',closePicker);
 overlay.addEventListener('click',event=>{if(event.target===overlay)closePicker()});
 document.addEventListener('keydown',event=>{
-  if(event.isComposing)return;
+  if(event.isComposing||event.keyCode===229)return;
+  if(renaming){
+    if(event.key==='Enter'&&document.activeElement===document.querySelector('#close'))return;
+    if(event.key==='Enter'){event.preventDefault();void confirmRename()}
+    else if(event.key==='Escape'){event.preventDefault();cancelRename()}
+    else if(event.key==='Tab'){
+      event.preventDefault();(document.activeElement===renaming.input?document.querySelector('#close'):renaming.input).focus();
+    }else if(event.ctrlKey&&['p','n','m'].includes(event.key.toLowerCase()))event.preventDefault();
+    return;
+  }
+  if(!overlay.hidden&&event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='m'){
+    event.preventDefault();beginRename();return;
+  }
   if(event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='p'){
     event.preventDefault();if(overlay.hidden)void openPicker();else closePicker();return;
   }
@@ -212,7 +257,7 @@ async function recoverJournals(){
 }
 try{
   const service=await api('status');
-  if(service.protocol!==2)throw Object.assign(Error(),{outdated:true});
+  if(service.protocol!==3)throw Object.assign(Error(),{outdated:true});
   lease=(await api('lease','POST')).lease;
   setInterval(async()=>{
     if(leaseLost)return;

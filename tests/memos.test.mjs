@@ -30,23 +30,38 @@ test('memo persistence, legacy preservation, conflicts, last opened, and HTTP au
   const api=(route,method='GET',body)=>fetch(`http://127.0.0.1:${port}/api/${route}`,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',Connection:'close'},body:body===undefined?undefined:JSON.stringify(body)});
   await start();
   try{
-    assert.equal((await(await api('status')).json()).protocol,2);
+    assert.equal((await(await api('status')).json()).protocol,3);
     const list=await(await api('memos')).json();assert.equal(list.lastId,'legacy');assert.equal(list.memos[0].title,'元の本文');
     assert.equal(fs.readFileSync(path.join(dataDir,'web.txt'),'utf8'),'元の本文');assert.equal(fs.readFileSync(path.join(dataDir,'web.txt.bak'),'utf8'),'前の本文');
     assert.equal((await api('memos','POST',{})).status,409);
     const {lease}=await(await api('lease','POST')).json();
+    assert.equal((await api('memos/legacy/title','PUT',{title:'denied'})).status,409);
+    const original=await(await api('memos/legacy')).json();
     const created=await(await api('memos','POST',{lease})).json();assert.equal(created.text,'');assert.ok(created.id!=='legacy');
     const saved=await api(`memos/${created.id}`,'PUT',{lease,text:'\n新しいメモ\n二行目',revision:created.revision});assert.equal(saved.status,200);
     assert.equal((await api(`memos/${created.id}`,'PUT',{lease,text:'\n新しいメモ\n二行目',revision:created.revision})).status,200);
     assert.equal((await api(`memos/${created.id}`,'PUT',{lease,text:'古い変更',revision:created.revision})).status,409);
     assert.equal((await(await api('document')).json()).text,'元の本文');
     assert.equal((await api('active','PUT',{lease,id:created.id})).status,200);
+    const orderBefore=await(await api('memos')).json();
+    for(const title of ['', '  ', null, 42, 'x'.repeat(201), 'a\nb', 'a\tb', '\nvalid', 'bad\u007f', 'bad\u0085', 'bad\u2028'])assert.equal((await api('memos/legacy/title','PUT',{lease,title})).status,400);
+    const renamed=await api('memos/legacy/title','PUT',{lease,title:'  独立した名前  '});
+    assert.equal(renamed.status,200);assert.deepEqual(await renamed.json(),{id:'legacy',title:'独立した名前'});
+    const indexAfter=fs.readFileSync(path.join(dataDir,'index.json'),'utf8');
+    assert.equal((await api('memos/legacy/title','PUT',{lease,title:'独立した名前'})).status,200);
+    assert.equal(fs.readFileSync(path.join(dataDir,'index.json'),'utf8'),indexAfter,'retry leaves metadata unchanged');
+    assert.deepEqual(await(await api('memos/legacy')).json(),original,'body and revision unchanged');
+    const orderAfter=await(await api('memos')).json();
+    assert.equal(orderAfter.lastId,orderBefore.lastId);
+    assert.deepEqual(orderAfter.memos.map(({id,createdAt})=>({id,createdAt})),orderBefore.memos.map(({id,createdAt})=>({id,createdAt})));
+    assert.equal((await api(`memos/${created.id}/title`,'PUT',{lease,title:'独立した名前'})).status,200,'duplicate titles allowed');
     assert.equal((await api('memos/%2e%2e%2fweb','GET')).status,404);
     assert.equal((await api('active','PUT',{lease,id:'../../web'})).status,404);
     assert.equal((await api('recovery','POST',{memoId:created.id,text:'復元する本文'})).status,200);
     assert.ok(fs.readdirSync(dataDir).some(n=>n.startsWith(created.id+'-recovery-')));
     await new Promise(ok=>server.close(ok));await start();
-    const after=await(await api('memos')).json();assert.equal(after.lastId,created.id);assert.equal(after.memos[0].id,created.id);assert.equal(after.memos[0].title,'新しいメモ');
+    const after=await(await api('memos')).json();assert.equal(after.lastId,created.id);assert.equal(after.memos[0].id,created.id);assert.equal(after.memos[0].title,'独立した名前');assert.equal(after.memos[1].title,'独立した名前');
+    assert.deepEqual(await(await api('memos/legacy')).json(),original);
   }finally{await new Promise(ok=>server.close(ok))}
 });
 
@@ -81,5 +96,15 @@ test('malformed or externally changed index and failed checkpoint cannot overwri
   assert.equal(fs.readFileSync(path.join(dataDir,'web.txt'),'utf8'),'keep');
   fs.appendFileSync(path.join(dataDir,'index.json'),' ');
   assert.throws(()=>store.create(),/outside editor/);
+  assert.throws(()=>store.rename('legacy','change'),/outside editor/);
   assert.equal(fs.readFileSync(path.join(dataDir,'web.txt'),'utf8'),'keep');
+});
+
+test('persisted manual titles are validated before use',()=>{
+  const dataDir=directory(),store=createMemoStore(dataDir);store.get('legacy');
+  const indexPath=path.join(dataDir,'index.json'),index=JSON.parse(fs.readFileSync(indexPath,'utf8'));
+  for(const title of ['',null,42,' padded ','bad\nname','a'.repeat(201)]){
+    index.memos[0].title=title;fs.writeFileSync(indexPath,JSON.stringify(index));
+    assert.throws(()=>createMemoStore(dataDir).list(),/Invalid memo title/);
+  }
 });
