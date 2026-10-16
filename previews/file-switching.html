@@ -1,90 +1,69 @@
-<div id="me-file-previews">
-  <div class="viz-carousel" aria-label="原稿の切り替え方" data-previous-label="前の案" data-next-label="次の案">
-    <section data-variant="名前のメニュー" aria-label="名前のメニュー">
-      <div class="me-window" data-kind="menu">
-        <header><span>minimal-editor</span><span class="me-caption">プレビュー</span></header>
-        <div class="me-toolbar"><button class="me-trigger cursor-interaction" aria-expanded="false"><span class="me-current">散歩のあと</span> ▾</button></div>
-        <textarea class="me-writing" aria-label="サンプル原稿" spellcheck="false"></textarea>
-        <div class="me-overlay" hidden><div class="me-picker" role="dialog" aria-label="原稿を選ぶ"><div class="me-picker-head"><span>原稿</span><button class="me-close cursor-interaction" aria-label="原稿一覧を閉じる">閉じる</button></div><div class="me-list"></div><button class="me-new cursor-interaction">新しい原稿</button><form class="me-create" hidden><input aria-label="新しい原稿の名前" placeholder="原稿の名前" required maxlength="60"><button class="cursor-interaction">作成</button></form></div></div>
-      </div>
-    </section>
-    <section data-variant="中央の検索" aria-label="中央の検索" hidden>
-      <div class="me-window" data-kind="search">
-        <header><span>minimal-editor</span><span class="me-caption">プレビュー</span></header>
-        <div class="me-toolbar"><span class="me-current">散歩のあと</span><button class="me-trigger cursor-interaction" aria-expanded="false">原稿を切替 <span class="me-key">Ctrl P</span></button></div>
-        <textarea class="me-writing" aria-label="サンプル原稿" spellcheck="false"></textarea>
-        <div class="me-overlay" hidden><div class="me-picker" role="dialog" aria-label="原稿を検索"><div class="me-picker-head"><span>原稿を切替</span><button class="me-close cursor-interaction" aria-label="検索を閉じる">閉じる</button></div><input class="me-search" aria-label="原稿名を検索" placeholder="原稿名を入力"><div class="me-list"></div><button class="me-new cursor-interaction">新しい原稿</button><form class="me-create" hidden><input aria-label="新しい原稿の名前" placeholder="原稿の名前" required maxlength="60"><button class="cursor-interaction">作成</button></form></div></div>
-      </div>
-    </section>
-    <section data-variant="一覧へ切替" aria-label="一覧へ切替" hidden>
-      <div class="me-window" data-kind="page">
-        <header><span>minimal-editor</span><span class="me-caption">プレビュー</span></header>
-        <div class="me-toolbar"><button class="me-trigger cursor-interaction" aria-expanded="false">原稿</button><span class="me-current">散歩のあと</span></div>
-        <textarea class="me-writing" aria-label="サンプル原稿" spellcheck="false"></textarea>
-        <div class="me-overlay" hidden><div class="me-picker" role="dialog" aria-label="原稿一覧"><div class="me-picker-head"><span>原稿</span><button class="me-close cursor-interaction">本文に戻る</button></div><div class="me-list"></div><button class="me-new cursor-interaction">新しい原稿</button><form class="me-create" hidden><input aria-label="新しい原稿の名前" placeholder="原稿の名前" required maxlength="60"><button class="cursor-interaction">作成</button></form></div></div>
-      </div>
-    </section>
+<div id="me-memo-preview" aria-label="本文とメモ切替のプレビュー">
+  <textarea class="me-writing" aria-label="サンプル本文。CtrlとPでメモを切り替え" spellcheck="false"></textarea>
+  <div class="me-overlay" hidden>
+    <div class="me-modal" role="dialog" aria-modal="true" aria-label="メモを切り替え">
+      <button class="me-close cursor-interaction" type="button" aria-label="メモ一覧を閉じる">×</button>
+      <ul class="me-list" aria-label="作成日の新しい順のメモ"></ul>
+    </div>
   </div>
 </div>
 <style>
-#me-file-previews .me-window{--me-bg:#202020;--me-fg:#dfdfdf;--me-dim:#aaa;--me-panel:#292929;position:relative;height:550px;overflow:hidden;background:var(--me-bg);color:var(--me-fg);font:400 14px/1.6 'Intel One Mono','BIZ UDGothic',monospace;color-scheme:dark}
-#me-file-previews .me-window *{box-sizing:border-box}
-#me-file-previews .me-window [hidden]{display:none!important}
-#me-file-previews header{height:40px;display:flex;gap:20px;align-items:center;padding:0 24px;background:#252525;font-size:12px;color:var(--me-dim)}
-#me-file-previews .me-caption{margin-left:auto;margin-right:88px}
-#me-file-previews .me-toolbar{height:58px;display:flex;gap:24px;align-items:center;padding:0 32px;color:var(--me-dim)}
-#me-file-previews button{font:inherit;color:inherit;background:transparent;border:0;padding:10px 12px;text-align:left;border-radius:4px}
-#me-file-previews button:hover{background:#363636;color:var(--me-fg)}
-#me-file-previews .me-trigger{max-width:100%;white-space:normal;overflow-wrap:anywhere}
-#me-file-previews [data-kind="search"] .me-trigger{margin-left:auto}
-#me-file-previews .me-key{font-size:12px;color:var(--me-dim);padding-left:14px}
-#me-file-previews .me-writing{display:block;resize:none;width:100%;max-width:1100px;height:452px;margin:auto;padding:20px 48px 40px;background:transparent;color:var(--me-fg);border:0;font:400 20px/1.9 'Intel One Mono','BIZ UDGothic',monospace;scrollbar-color:#666 var(--me-bg)}
-#me-file-previews textarea::selection{background:#555;color:#dfdfdf}
-#me-file-previews .me-overlay{position:absolute;inset:40px 0 0;z-index:3}
-#me-file-previews .me-picker{background:var(--me-panel);color:var(--me-fg);padding:16px;max-height:100%;overflow:auto;border-radius:6px}
-#me-file-previews .me-picker-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;padding-left:12px;color:var(--me-dim)}
-#me-file-previews .me-close{font-size:12px}
-#me-file-previews .me-list{display:grid;gap:4px}
-#me-file-previews .me-row{width:100%;display:flex;justify-content:space-between;gap:16px;align-items:center;min-height:44px}
-#me-file-previews .me-row span:first-child{overflow-wrap:anywhere}
-#me-file-previews .me-mark{color:var(--me-dim);font-size:12px;flex-shrink:0}
-#me-file-previews .me-new{color:var(--me-dim);margin-top:16px}
-#me-file-previews input{min-width:0;width:100%;font:inherit;background:#333;color:var(--me-fg);border:0;border-radius:4px;padding:12px}
-#me-file-previews input::placeholder{color:var(--me-dim)}
-#me-file-previews .me-search{margin-bottom:14px}
-#me-file-previews .me-create{display:flex;gap:8px;margin:12px}
-#me-file-previews .me-create button{white-space:nowrap}
-#me-file-previews .me-empty{color:var(--me-dim);padding:12px}
-#me-file-previews [data-kind="menu"] .me-picker{position:absolute;left:32px;top:58px;width:min(350px,calc(100% - 64px));max-height:calc(100% - 74px)}
-#me-file-previews [data-kind="search"] .me-overlay{background:#202020b8;padding:64px 24px 24px;display:flex;justify-content:center;align-items:flex-start}
-#me-file-previews [data-kind="search"] .me-picker{width:520px;max-width:100%;box-shadow:0 14px 40px #0005}
-#me-file-previews [data-kind="page"] .me-overlay{background:var(--me-bg);padding:28px 48px}
-#me-file-previews [data-kind="page"] .me-picker{max-width:720px;margin:auto;background:var(--me-bg);padding:0}
-#me-file-previews [data-kind="page"] .me-row{min-height:60px}
-@media(max-width:520px){#me-file-previews .me-toolbar{padding:0 16px;gap:12px}#me-file-previews .me-writing{padding:20px 24px;font-size:18px}#me-file-previews .me-key{display:none}#me-file-previews [data-kind="page"] .me-overlay{padding:20px 16px}#me-file-previews [data-kind="menu"] .me-picker{left:16px;width:calc(100% - 32px)}#me-file-previews .me-caption{margin-right:72px}#me-file-previews .me-window{height:590px}#me-file-previews .me-writing{height:492px}}
+#me-memo-preview{position:relative;height:560px;background:#202020;color:#dfdfdf;color-scheme:dark;font:400 16px/1.6 'Intel One Mono','BIZ UDGothic',monospace}
+#me-memo-preview *{box-sizing:border-box}
+#me-memo-preview [hidden]{display:none!important}
+#me-memo-preview .me-writing{display:block;resize:none;width:100%;max-width:1100px;height:100%;margin:auto;padding:60px 48px 48px;background:transparent;color:inherit;border:0;font:400 20px/1.9 'Intel One Mono','BIZ UDGothic',monospace;scrollbar-color:#666 #202020}
+#me-memo-preview .me-writing::selection{background:#555;color:#dfdfdf}
+#me-memo-preview .me-overlay{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;padding:24px;background:#202020b8}
+#me-memo-preview .me-modal{position:relative;width:520px;max-width:100%;max-height:100%;display:flex;flex-direction:column;padding:52px 16px 20px;background:#292929;border-radius:6px}
+#me-memo-preview button{font:inherit;color:#dfdfdf;border:0;background:transparent;border-radius:4px}
+#me-memo-preview .me-close{position:absolute;right:10px;top:6px;display:flex;align-items:center;justify-content:center;width:40px;height:40px;font-size:24px;color:#aaa}
+#me-memo-preview .me-close:hover{background:#363636;color:#dfdfdf}
+#me-memo-preview .me-list{list-style:none;margin:0;padding:2px;overflow:auto;scrollbar-color:#666 #292929}
+#me-memo-preview .me-list li+li{margin-top:4px}
+#me-memo-preview .me-row{display:block;width:100%;padding:14px 16px;text-align:left;overflow-wrap:anywhere;min-height:48px}
+#me-memo-preview .me-row:hover{background:#333}
+#me-memo-preview .me-row[aria-pressed="true"]{background:#424242}
+@media(max-width:520px){#me-memo-preview{height:580px}#me-memo-preview .me-writing{padding:36px 24px;font-size:18px}#me-memo-preview .me-overlay{padding:16px}#me-memo-preview .me-modal{padding-left:10px;padding-right:10px}}
 </style>
 <script>
 (()=>{
- const root=document.getElementById('me-file-previews');
- const samples=[{name:'散歩のあと',text:'散歩から戻って、窓を開けた。\n\n歩いている間にはまとまらなかったことを、少しずつ書いてみる。\n答えを急がず、いま考えているところから。'}, {name:'道具について',text:'毎日使う道具について。\n\n使っているあいだ、その存在を意識しなくてよいものが好きだ。'}, {name:'まだ名前のない考え',text:'まだ形になっていないこと。\n\n思いついた順に置いておく。'}, {name:'読み返すためのメモ',text:'後でもう一度考えたいことを、ここに残しておく。'}];
- const controllers=[];
- root.querySelectorAll('.me-window').forEach(win=>{
-  let docs=samples.map(d=>({...d})),current=0;
-  const editor=win.querySelector('textarea'),overlay=win.querySelector('.me-overlay'),trigger=win.querySelector('.me-trigger'),list=win.querySelector('.me-list'),query=win.querySelector('.me-search'),form=win.querySelector('form'),newButton=win.querySelector('.me-new');
-  function renderList(){list.replaceChildren();const q=query?query.value.trim().toLocaleLowerCase():'';docs.forEach((doc,i)=>{if(q&&!doc.name.toLocaleLowerCase().includes(q))return;const b=document.createElement('button');b.type='button';b.className='me-row cursor-interaction';const label=document.createElement('span');label.textContent=doc.name;const mark=document.createElement('span');mark.className='me-mark';mark.textContent=i===current?'現在':'';b.append(label,mark);b.addEventListener('click',()=>{current=i;renderEditor();close()});list.append(b)});if(!list.children.length){const p=document.createElement('div');p.className='me-empty';p.textContent='一致する原稿なし';list.append(p)}}
-  function renderEditor(){editor.value=docs[current].text;win.querySelectorAll('.me-current').forEach(n=>n.textContent=docs[current].name)}
-  function close(){overlay.hidden=true;trigger.setAttribute('aria-expanded','false');editor.inert=false;form.hidden=true;newButton.hidden=false;editor.focus()}
-  function open(){overlay.hidden=false;trigger.setAttribute('aria-expanded','true');editor.inert=true;if(query)query.value='';renderList();(query||list.querySelector('button')||win.querySelector('.me-close')).focus()}
-  trigger.addEventListener('click',()=>overlay.hidden?open():close());
-  win.querySelector('.me-close').addEventListener('click',close);
-  overlay.addEventListener('click',e=>{if(e.target===overlay&&win.dataset.kind!=='page')close()});
-  editor.addEventListener('input',()=>{docs[current].text=editor.value});
-  if(query)query.addEventListener('input',renderList);
-  newButton.addEventListener('click',()=>{form.hidden=false;newButton.hidden=true;form.querySelector('input').focus()});
-  form.addEventListener('submit',e=>{e.preventDefault();const input=form.querySelector('input'),name=input.value.trim();if(!name)return;docs.push({name,text:''});current=docs.length-1;input.value='';renderEditor();close()});
-  win.addEventListener('keydown',e=>{if(e.key==='Escape'&&!overlay.hidden){e.preventDefault();close()}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='p'){e.preventDefault();open()}if(query&&e.target===query&&e.key==='Enter'){e.preventDefault();list.querySelector('button')?.click()}});
-  renderEditor();controllers.push({win,open,close});
+ const root=document.getElementById('me-memo-preview');
+ const editor=root.querySelector('.me-writing'),overlay=root.querySelector('.me-overlay'),list=root.querySelector('.me-list'),closeButton=root.querySelector('.me-close');
+ // Creation dates order the examples, but are never rendered. All edits stay
+ // in this preview's memory; no real files or editor APIs are accessed.
+ const memos=[
+  {id:'walk',created:20261014,name:'散歩のあと',text:'散歩から戻って、窓を開けた。\n\n歩いている間にはまとまらなかったことを、少しずつ書いてみる。\n答えを急がず、いま考えているところから。'},
+  {id:'tools',created:20261016,name:'道具について',text:'毎日使う道具について。\n\n使っているあいだ、その存在を意識しなくてよいものが好きだ。'},
+  {id:'idea',created:20261015,name:'まだ名前のない考え',text:'まだ形になっていないこと。\n\n思いついた順に置いておく。'},
+  {id:'read',created:20261012,name:'読み返すためのメモ',text:'後でもう一度考えたいことを、ここに残しておく。'}
+ ].sort((a,b)=>b.created-a.created);
+ let current='walk',selected=0;
+ const views=new Map();
+ const controls={open:false};
+ const currentMemo=()=>memos.find(m=>m.id===current);
+ function rememberView(){views.set(current,{start:editor.selectionStart,end:editor.selectionEnd,direction:editor.selectionDirection,scroll:editor.scrollTop})}
+ function restoreView(){editor.focus({preventScroll:true});const v=views.get(current);if(v){editor.setSelectionRange(v.start,v.end,v.direction);editor.scrollTop=v.scroll}}
+ function select(index,focus=true){selected=Math.max(0,Math.min(memos.length-1,index));const rows=[...list.querySelectorAll('button')];rows.forEach((row,i)=>row.setAttribute('aria-pressed',String(i===selected)));if(focus){rows[selected].focus({preventScroll:true});rows[selected].scrollIntoView({block:'nearest'})}}
+ function close(){if(overlay.hidden)return;overlay.hidden=true;controls.open=false;editor.inert=false;restoreView()}
+ function choose(index){const next=memos[index].id;if(next!==current){current=next;editor.value=currentMemo().text;if(!views.has(current))views.set(current,{start:0,end:0,direction:'none',scroll:0})}close()}
+ function open(){if(!overlay.hidden)return;rememberView();overlay.hidden=false;controls.open=true;editor.inert=true;list.replaceChildren();memos.forEach((memo,i)=>{const item=document.createElement('li'),button=document.createElement('button');button.type='button';button.className='me-row cursor-interaction';button.textContent=memo.name;button.dataset.memoId=memo.id;button.addEventListener('focus',()=>select(i,false));button.addEventListener('click',()=>choose(i));item.append(button);list.append(item)});select(memos.findIndex(m=>m.id===current))}
+ editor.value=currentMemo().text;
+ editor.addEventListener('input',()=>{currentMemo().text=editor.value});
+ closeButton.addEventListener('click',close);
+ overlay.addEventListener('click',event=>{if(event.target===overlay)close()});
+ root.addEventListener('keydown',event=>{
+  if(event.isComposing||event.keyCode===229)return;
+  if(event.ctrlKey&&!event.altKey&&event.key.toLowerCase()==='p'){event.preventDefault();open();return}
+  if(overlay.hidden)return;
+  if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();return}
+  if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();select(selected+(event.key==='ArrowDown'?1:-1));return}
+  if(event.key==='Enter'&&event.target!==closeButton){event.preventDefault();choose(selected);return}
+  if(event.key==='Tab'){
+   const buttons=[...overlay.querySelectorAll('button')],first=buttons[0],last=buttons[buttons.length-1];
+   if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
+   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+  }
  });
- if(globalThis.Tweak){controllers.forEach(({win,open,close})=>{const state={picker:false};const tweak=new Tweak({container:win,onChange:()=>state.picker?open():close()});tweak.addToggle(state,'picker',{label:'切替画面を表示'})})}
+ if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:()=>controls.open?open():close()});tweak.addToggle(controls,'open',{label:'モーダルを表示'})}
 })();
 </script>
