@@ -43,6 +43,21 @@ try{
   await cdp('Input.insertText',{text:'変換'});
   await waitFor(()=>fs.readFileSync(path.join(dir,'web.txt'),'utf8')===text+'変換');
   const image=await cdp('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(dir,'editor.png'),Buffer.from(image.data,'base64'));
+  // The transient block is draggable, has no native arrows, and survives a held drag.
+  await evaluate('document.querySelector("#editor").scrollTop=240');
+  await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  await waitFor(()=>evaluate('getComputedStyle(document.querySelector("#scroll-thumb")).visibility==="visible"'));
+  const thumb=await evaluate(`(()=>{const t=document.querySelector('#scroll-thumb'),r=t.getBoundingClientRect(),s=getComputedStyle(t);return {x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,radius:s.borderRadius,native:getComputedStyle(document.querySelector('#editor')).scrollbarWidth}})()`);
+  assert.equal(thumb.width,20);assert.equal(thumb.radius,'2px');assert.equal(thumb.native,'none');
+  await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:thumb.x,y:thumb.y});
+  await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:thumb.x,y:thumb.y,button:'left',clickCount:1});
+  await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:thumb.x,y:thumb.y+80,buttons:1,button:'left'});
+  assert.ok(await evaluate('document.querySelector("#editor").scrollTop>240'));
+  await new Promise(r=>setTimeout(r,1700));
+  assert.equal(await evaluate('getComputedStyle(document.querySelector("#scroll-thumb")).visibility'),'visible');
+  await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:thumb.x,y:thumb.y+80,button:'left',clickCount:1});
+  await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:100,y:100});
+  await waitFor(()=>evaluate('getComputedStyle(document.querySelector("#scroll-thumb")).visibility==="hidden"'));
   // Kill both after a confirmed disk save, without running close handlers.
   server.kill();await once(server,'exit');
   killBrowser();await once(browser,'exit');ws.close();ws=null;stage('first forced exit');

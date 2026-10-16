@@ -5,6 +5,13 @@
 <style>
 :root{color-scheme:dark;background:#202020;color:#dfdfdf;font-family:'Intel One Mono','BIZ UDGothic',monospace}
 body{margin:0}
+.editor-shell{position:relative;width:min(100%,1100px);margin:auto}
+textarea{scrollbar-width:none}
+textarea::-webkit-scrollbar{display:none}
+#scroll-thumb{position:absolute;right:4px;top:4px;width:20px;border:0;border-radius:2px;margin:0;padding:0;background:#777;visibility:hidden;touch-action:none;cursor:grab}
+#scroll-thumb.visible{visibility:visible}
+#scroll-thumb:hover{background:#999}
+#scroll-thumb:active{background:#aaa;cursor:grabbing}
 textarea{display:block;box-sizing:border-box;width:min(100%,1100px);height:100dvh;margin:auto;padding:60px 48px 48px;border:0;outline:0;resize:none;background:transparent;color:inherit;font:20px/1.8 'Intel One Mono','BIZ UDGothic',monospace;letter-spacing:0.01em;tab-size:4;scrollbar-color:#666 #202020}
 textarea::selection{background:#555;color:#dfdfdf}
 #state{position:fixed;right:18px;top:12px;font:12px 'Intel One Mono','BIZ UDGothic',monospace;color:#b0b0b0}
@@ -22,7 +29,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 @media(max-width:600px){textarea{padding:36px 24px}}
 </style>
 <span id="state" role="status" aria-live="polite"></span>
-<textarea id="editor" aria-label="本文" spellcheck="false" disabled></textarea>
+<div class="editor-shell"><textarea id="editor" aria-label="本文" spellcheck="false" disabled></textarea><button id="scroll-thumb" type="button" aria-label="本文のスクロール位置をドラッグ" aria-controls="editor"></button></div>
 <div id="overlay" hidden>
   <section id="picker" role="dialog" aria-modal="true" aria-label="メモを切り替える">
     <button id="close" type="button" aria-label="閉じる">×</button>
@@ -33,6 +40,37 @@ button{font:inherit;color:inherit;cursor:pointer}
 const token=location.hash.slice(1)||sessionStorage.getItem('token');
 if(token){sessionStorage.setItem('token',token);history.replaceState(null,'',location.pathname)}
 const editor=document.querySelector('#editor'),state=document.querySelector('#state');
+const scrollbar=(()=>{
+  const thumb=document.querySelector('#scroll-thumb');
+  let timer,drag=null,hover=false;
+  function geometry(){
+    const track=Math.max(0,editor.clientHeight-8);
+    const height=Math.min(track,Math.max(44,track*editor.clientHeight/Math.max(1,editor.scrollHeight)));
+    return {height,travel:track-height,max:editor.scrollHeight-editor.clientHeight};
+  }
+  function update(){
+    const g=geometry();thumb.style.height=g.height+'px';
+    thumb.style.top=(4+(g.max>0?editor.scrollTop/g.max*g.travel:0))+'px';
+    if(g.max<=0)thumb.classList.remove('visible');
+  }
+  function schedule(){clearTimeout(timer);timer=setTimeout(()=>{if(!drag&&!hover&&document.activeElement!==thumb)thumb.classList.remove('visible')},1500)}
+  editor.addEventListener('scroll',()=>{update();if(geometry().max>0)thumb.classList.add('visible');schedule()});
+  editor.addEventListener('input',update);
+  thumb.addEventListener('pointerenter',()=>{hover=true;clearTimeout(timer)});
+  thumb.addEventListener('pointerleave',()=>{hover=false;schedule()});
+  thumb.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();drag={y:event.clientY,top:editor.scrollTop};thumb.setPointerCapture(event.pointerId);clearTimeout(timer)});
+  thumb.addEventListener('pointermove',event=>{if(!drag)return;const g=geometry();if(g.travel>0)editor.scrollTop=drag.top+(event.clientY-drag.y)*g.max/g.travel});
+  function release(){drag=null;schedule()}
+  for(const name of ['pointerup','pointercancel','lostpointercapture'])thumb.addEventListener(name,release);
+  thumb.addEventListener('blur',schedule);
+  thumb.addEventListener('keydown',event=>{
+    const steps={ArrowDown:36,ArrowUp:-36,PageDown:editor.clientHeight,PageUp:-editor.clientHeight};
+    if(event.key in steps){event.preventDefault();editor.scrollTop+=steps[event.key]}
+    else if(event.key==='Home'||event.key==='End'){event.preventDefault();editor.scrollTop=event.key==='Home'?0:editor.scrollHeight}
+  });
+  new ResizeObserver(update).observe(editor);
+  return {update};
+})();
 const overlay=document.querySelector('#overlay'),list=document.querySelector('#memo-list');
 const headers={Authorization:'Bearer '+token,'Content-Type':'application/json'};
 const sessionId=crypto.randomUUID();
@@ -116,7 +154,7 @@ async function switchMemo(id,{create=false}={}){
     // Load the target completely before recording selection or replacing the textarea.
     const target=create?await api('memos','POST',{lease}):await api('memos/'+id);
     await api('active','PUT',{lease,id:target.id});
-    memoId=target.id;revision=target.revision;editor.value=target.text;
+    memoId=target.id;revision=target.revision;editor.value=target.text;scrollbar.update();
     pending=null;unconfirmed=null;failed=false;position=null;
     overlay.hidden=true;editor.scrollTop=0;editor.setSelectionRange(0,0);status();
   }catch{
@@ -186,7 +224,7 @@ try{
   },3000);
   await recoverJournals();
   const catalog=await api('memos'),current=await api('memos/'+catalog.lastId);
-  memoId=current.id;revision=current.revision;editor.value=current.text;
+  memoId=current.id;revision=current.revision;editor.value=current.text;scrollbar.update();
   editor.disabled=false;ready=true;editor.focus();status();
 }catch(error){status(error.outdated?'更新のため、すべての minimal-editor を閉じて開き直してください':'開けません · すでに開いている画面がないか確認してください')}
 window.addEventListener('pagehide',()=>{
