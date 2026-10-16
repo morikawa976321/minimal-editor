@@ -126,7 +126,7 @@ function renderList(){
     const row=document.createElement('button');row.type='button';row.className='memo';
     row.id='memo-option-'+index;row.tabIndex=-1;row.setAttribute('role','option');
     row.setAttribute('aria-selected',String(index===selected));row.textContent=memo.title;
-    row.addEventListener('click',()=>void switchMemo(memo.id));list.append(row);
+    row.addEventListener('click',()=>void switchMemo(memo.id,{create:!!memo.create}));list.append(row);
   });
   highlight();
 }
@@ -139,7 +139,7 @@ async function openPicker(){
   if(!ready||busy||leaseLost)return;
   rememberPosition();busy=true;
   try{
-    const result=await api('memos');choices=result.memos;
+    const result=await api('memos');choices=[{id:null,title:'新規メモ',create:true},...result.memos];
     selected=Math.max(0,choices.findIndex(memo=>memo.id===memoId));
     overlay.hidden=false;renderList();list.focus();
   }catch{status('メモ一覧を開けません · 本文はこの画面に残っています')}
@@ -181,7 +181,7 @@ document.addEventListener('keydown',event=>{
     selected=Math.max(0,Math.min(choices.length-1,selected+(event.key==='ArrowDown'?1:-1)));highlight();list.focus();
   }
   if(event.key==='Enter'&&document.activeElement!==document.querySelector('#close')){
-    event.preventDefault();if(choices[selected])void switchMemo(choices[selected].id);
+    event.preventDefault();if(choices[selected])void switchMemo(choices[selected].id,{create:!!choices[selected].create});
   }
   if(event.key==='Tab'){
     event.preventDefault();(document.activeElement===list?document.querySelector('#close'):list).focus();
