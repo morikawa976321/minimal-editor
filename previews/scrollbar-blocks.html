@@ -1,0 +1,44 @@
+<div id="me-blocks">
+<div class="viz-carousel" aria-label="スクロール後だけ表示するブロック型バー" data-previous-label="前の案" data-next-label="次の案">
+<section data-variant="控えめ · 10px"><div class="sb-window" data-width="10" aria-label="控えめ"><textarea aria-label="試し書き" spellcheck="false"></textarea><button class="sb-thumb" aria-label="スクロール位置をドラッグ" type="button"></button></div></section>
+<section data-variant="標準 · 16px" hidden><div class="sb-window" data-width="16" aria-label="標準"><textarea aria-label="試し書き" spellcheck="false"></textarea><button class="sb-thumb" aria-label="スクロール位置をドラッグ" type="button"></button></div></section>
+<section data-variant="太め · 22px" hidden><div class="sb-window" data-width="22" aria-label="太め"><textarea aria-label="試し書き" spellcheck="false"></textarea><button class="sb-thumb" aria-label="スクロール位置をドラッグ" type="button"></button></div></section>
+</div></div>
+<style>
+#me-blocks .sb-window{background:#202020;color:#dfdfdf;position:relative;width:100%;height:540px}
+#me-blocks textarea{box-sizing:border-box;display:block;width:100%;height:100%;margin:0;border:0;resize:none;background:#202020;color:#dfdfdf;padding:48px;font:20px/1.8 'Intel One Mono','BIZ UDGothic',monospace;letter-spacing:.01em;tab-size:4;scrollbar-width:none}
+#me-blocks textarea::-webkit-scrollbar{display:none}
+#me-blocks textarea:focus{outline-offset:-2px}
+#me-blocks textarea::selection{background:#555;color:#dfdfdf}
+#me-blocks .sb-thumb{position:absolute;right:4px;top:4px;margin:0;padding:0;border:0;border-radius:0;background:#777;visibility:hidden;touch-action:none;cursor:grab}
+#me-blocks .sb-active .sb-thumb{visibility:visible}
+#me-blocks .sb-thumb:hover{background:#999}
+#me-blocks .sb-thumb:active{cursor:grabbing;background:#aaa}
+@media(max-width:600px){#me-blocks textarea{padding:36px 32px 36px 24px}}
+</style>
+<script>
+(()=>{
+const root=document.getElementById('me-blocks');
+const paragraphs=['窓の外を見ながら、今日のことを少しずつ書く。言葉を急いで選ばず、浮かんだ順に置いていく。短い文と長い文を並べたときに、目が自然に次の行へ移るかを確かめる。','机の上には、いま使うものだけを置いた。何もないことが目的なのではなく、書き始めるまでの手間が少ないことが大切なのだと思う。必要なものは、必要になったときに手が届けばいい。','今日は少し遠くまで歩いた。いつもと違う道を選ぶと、見慣れた街の形が変わる。帰ってきてから、そのとき考えていたことを短い言葉で残した。','The room was quiet. I opened a blank page and began to write.','書きかけの文章を読み返す。言い切れなかったことを急いでまとめず、少し空白を置いておく。明日の自分が、別の言葉を見つけるかもしれない。'];
+for(const surface of root.querySelectorAll('.sb-window')){
+const area=surface.querySelector('textarea'),thumb=surface.querySelector('button');
+area.value=Array.from({length:4},()=>paragraphs.join('\n\n')).join('\n\n');
+const options={width:Number(surface.dataset.width),delay:1.5};
+let timer,drag=null,hover=false;
+function geometry(){const track=Math.max(0,area.clientHeight-8);const height=Math.min(track,Math.max(44,track*area.clientHeight/Math.max(1,area.scrollHeight)));return {height,travel:track-height,max:area.scrollHeight-area.clientHeight}}
+function update(){const g=geometry();thumb.style.width=options.width+'px';thumb.style.height=g.height+'px';thumb.style.top=(4+(g.max>0?area.scrollTop/g.max*g.travel:0))+'px';if(g.max<=0)surface.classList.remove('sb-active')}
+function schedule(){clearTimeout(timer);timer=setTimeout(()=>{if(!drag&&!hover&&document.activeElement!==thumb)surface.classList.remove('sb-active')},options.delay*1000)}
+function reveal(){update();if(area.scrollHeight>area.clientHeight)surface.classList.add('sb-active');schedule()}
+area.addEventListener('scroll',reveal);area.addEventListener('input',update);
+thumb.addEventListener('pointerenter',()=>{hover=true;clearTimeout(timer)});
+thumb.addEventListener('pointerleave',()=>{hover=false;schedule()});
+thumb.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();drag={y:event.clientY,top:area.scrollTop};thumb.setPointerCapture(event.pointerId);clearTimeout(timer)});
+thumb.addEventListener('pointermove',event=>{if(!drag)return;const g=geometry();if(g.travel>0)area.scrollTop=drag.top+(event.clientY-drag.y)*g.max/g.travel});
+function release(){drag=null;schedule()}
+thumb.addEventListener('pointerup',release);thumb.addEventListener('lostpointercapture',release);thumb.addEventListener('pointercancel',release);thumb.addEventListener('blur',schedule);
+thumb.addEventListener('keydown',event=>{const steps={ArrowDown:36,ArrowUp:-36,PageDown:area.clientHeight,PageUp:-area.clientHeight};if(event.key in steps){event.preventDefault();area.scrollTop+=steps[event.key]}else if(event.key==='Home'||event.key==='End'){event.preventDefault();area.scrollTop=event.key==='Home'?0:area.scrollHeight}});
+new ResizeObserver(update).observe(area);update();
+if(globalThis.Tweak){const tweak=new Tweak({container:surface,onChange:()=>{update();if(surface.classList.contains('sb-active'))schedule()}});tweak.addSlider(options,'width',{label:'バーの幅',min:8,max:28,step:1,unit:'px'});tweak.addSlider(options,'delay',{label:'表示する時間',min:.5,max:4,step:.5,unit:'秒'})}
+}
+})();
+</script>
