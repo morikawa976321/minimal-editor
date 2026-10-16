@@ -143,7 +143,7 @@ try{
   // Typography comparison is isolated from real notes and application settings.
   await cdp('Page.navigate',{url:'file:///'+path.join(root,'previews/typography.html').replaceAll('\\','/')});
   await waitFor(()=>evaluate('!!document.querySelector("#sample")'));
-  for(const [index,line,spacing] of [[0,'30px','normal'],[1,'30px','0.4px'],[2,'38px','normal']]){
+  for(const [index,line,spacing] of [[0,'30px','normal'],[1,'30px','0.4px'],[2,'36px','0.2px']]){
     await evaluate(`document.querySelectorAll('.presets button')[${index}].click()`);
     const style=await evaluate(`(()=>{const s=getComputedStyle(document.querySelector('#sample'));return [s.lineHeight,s.letterSpacing]})()`);
     assert.equal(style[0],line);assert.ok(style[1]===spacing||(spacing==='normal'&&style[1]==='0px'));

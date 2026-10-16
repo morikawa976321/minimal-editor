@@ -30,7 +30,7 @@
   button:hover { background: #444; }
   :focus-visible { outline: 2px solid #aaa; outline-offset: 3px; }
   .sample-label { display: block; margin-top: 24px; color: #aaa; font-size: 12px; }
-  #sample { display: block; margin: 0 auto; width: 100%; max-width: 1100px; height: 65vh; min-height: 420px; padding: 36px 48px 60px; border: 0; outline: 0; resize: vertical; background: #202020; color: #dfdfdf; font: 20px/1.9 'Intel One Mono','BIZ UDGothic',monospace; letter-spacing: 0; tab-size: 4; }
+  #sample { display: block; margin: 0 auto; width: 100%; max-width: 1100px; height: 65vh; min-height: 420px; padding: 36px 48px 60px; border: 0; outline: 0; resize: vertical; background: #202020; color: #dfdfdf; font: 20px/1.8 'Intel One Mono','BIZ UDGothic',monospace; letter-spacing: 0.01em; tab-size: 4; }
   @media (max-width: 600px) { .controls { padding: 24px 24px 0; } #sample { padding: 32px 24px; } .adjustments { gap: 22px; } }
 </style>
 </head>
@@ -41,19 +41,19 @@
     <div class="presets" role="group" aria-label="比較用プリセット">
       <button type="button" data-line="1.5" data-letter="0" aria-pressed="false">等幅の参考 · 1.5 / 0</button>
       <button type="button" data-line="1.5" data-letter="0.02" aria-pressed="false">本文20pxの参考 · 1.5 / 0.02</button>
-      <button id="reset" type="button" data-line="1.9" data-letter="0" aria-pressed="true">現在 · 1.9 / 0</button>
+      <button id="reset" type="button" data-line="1.8" data-letter="0.01" aria-pressed="true">現在 · 1.8 / 0.01</button>
     </div>
     <p class="hint source">行間（倍） / 文字間隔（em）。参考値は<a href="https://design.digital.go.jp/dads/foundations/typography/" target="_blank" rel="noopener noreferrer">デジタル庁の文字組み</a>（Mono／Std20N150）から。異なる書体での値なので、最適値ではなく比較の出発点です。</p>
     <div class="adjustments">
       <div class="adjustment">
-        <div class="value-row"><label for="line-value">行間</label><input id="line-value" type="text" inputmode="decimal" value="1.9" aria-describedby="line-hint" autocomplete="off" spellcheck="false"><span class="unit">倍</span><output id="line-pixels" class="unit">38 px</output></div>
-        <input id="line-range" type="range" min="1" max="3" step="0.05" value="1.9" aria-label="行間のスライダー">
-        <p id="line-hint" class="hint">1.0–3.0 ／ 現在のアプリは 1.9</p>
+        <div class="value-row"><label for="line-value">行間</label><input id="line-value" type="text" inputmode="decimal" value="1.8" aria-describedby="line-hint" autocomplete="off" spellcheck="false"><span class="unit">倍</span><output id="line-pixels" class="unit">36 px</output></div>
+        <input id="line-range" type="range" min="1" max="3" step="0.05" value="1.8" aria-label="行間のスライダー">
+        <p id="line-hint" class="hint">1.0–3.0 ／ 現在のアプリは 1.8</p>
       </div>
       <div class="adjustment">
-        <div class="value-row"><label for="letter-value">文字間隔</label><input id="letter-value" type="text" inputmode="decimal" value="0" aria-describedby="letter-hint" autocomplete="off" spellcheck="false"><span class="unit">em</span><output id="letter-pixels" class="unit">0 px</output></div>
-        <input id="letter-range" type="range" min="-0.1" max="0.2" step="0.005" value="0" aria-label="文字間隔のスライダー">
-        <p id="letter-hint" class="hint">−0.1–0.2 ／ 現在のアプリは 0</p>
+        <div class="value-row"><label for="letter-value">文字間隔</label><input id="letter-value" type="text" inputmode="decimal" value="0.01" aria-describedby="letter-hint" autocomplete="off" spellcheck="false"><span class="unit">em</span><output id="letter-pixels" class="unit">0.2 px</output></div>
+        <input id="letter-range" type="range" min="-0.1" max="0.2" step="0.005" value="0.01" aria-label="文字間隔のスライダー">
+        <p id="letter-hint" class="hint">−0.1–0.2 ／ 現在のアプリは 0.01</p>
       </div>
     </div>
     <div class="result-row">
@@ -89,8 +89,8 @@ minimum, morning, rhythm — 0123456789 / 2026-10-16
   const presets = [...document.querySelectorAll('.presets button')];
   const format = value => String(Number(value.toFixed(6)));
   const controls = [
-    { name: 'line', value: 1.9, initial: 1.9, min: 1, max: 3, property: 'lineHeight', suffix: '' },
-    { name: 'letter', value: 0, initial: 0, min: -0.1, max: 0.2, property: 'letterSpacing', suffix: 'em' },
+    { name: 'line', value: 1.8, initial: 1.8, min: 1, max: 3, property: 'lineHeight', suffix: '' },
+    { name: 'letter', value: 0.01, initial: 0.01, min: -0.1, max: 0.2, property: 'letterSpacing', suffix: 'em' },
   ];
   function render(control, updateText = true) {
     if (updateText) control.text.value = format(control.value);

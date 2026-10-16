@@ -1,0 +1,49 @@
+<div id="me-scrollbars">
+  <div class="viz-carousel" aria-label="スクロールバーの比較" data-previous-label="前の案" data-next-label="次の案">
+    <section data-variant="細く常時表示"><div class="sb-window sb-always"><textarea aria-label="細く常時表示の試し書き" spellcheck="false"></textarea></div></section>
+    <section data-variant="必要なときに表示" hidden><div class="sb-window sb-context"><textarea aria-label="必要なときに表示の試し書き" spellcheck="false"></textarea></div></section>
+    <section data-variant="非表示" hidden><div class="sb-window sb-none"><textarea aria-label="非表示の試し書き" spellcheck="false"></textarea></div></section>
+  </div>
+</div>
+<style>
+#me-scrollbars .sb-window{background:#202020;color:#dfdfdf;position:relative;width:100%;height:540px;--sb-width:8px}
+#me-scrollbars textarea{box-sizing:border-box;display:block;width:100%;height:100%;margin:0;border:0;resize:none;background:#202020;color:#dfdfdf;padding:48px;font:20px/1.8 'Intel One Mono','BIZ UDGothic',monospace;letter-spacing:.01em;tab-size:4;scrollbar-width:auto;scrollbar-color:auto}
+#me-scrollbars textarea:focus{outline-offset:-2px}
+#me-scrollbars textarea::selection{background:#555;color:#dfdfdf}
+#me-scrollbars textarea::-webkit-scrollbar{width:var(--sb-width);height:var(--sb-width)}
+#me-scrollbars textarea::-webkit-scrollbar-track{background:transparent}
+#me-scrollbars textarea::-webkit-scrollbar-thumb{background:#666;border-radius:8px;border:2px solid #202020}
+#me-scrollbars textarea::-webkit-scrollbar-button{display:none;width:0;height:0}
+#me-scrollbars .sb-context textarea::-webkit-scrollbar-thumb{background:#333}
+#me-scrollbars .sb-context.sb-active textarea::-webkit-scrollbar-thumb{background:#777}
+#me-scrollbars .sb-none textarea{scrollbar-width:none}
+#me-scrollbars .sb-none textarea::-webkit-scrollbar{display:none}
+@media(max-width:600px){#me-scrollbars textarea{padding:36px 24px}}
+</style>
+<script>
+(()=>{
+const root=document.getElementById('me-scrollbars');
+const paragraphs=[
+'窓の外を見ながら、今日のことを少しずつ書く。言葉を急いで選ばず、浮かんだ順に置いていく。短い文と長い文を並べたときに、目が自然に次の行へ移るかを確かめる。',
+'机の上には、いま使うものだけを置いた。何もないことが目的なのではなく、書き始めるまでの手間が少ないことが大切なのだと思う。必要なものは、必要になったときに手が届けばいい。',
+'今日は少し遠くまで歩いた。いつもと違う道を選ぶと、見慣れた街の形が変わる。帰ってきてから、そのとき考えていたことを短い言葉で残した。',
+'The room was quiet. I opened a blank page and began to write.\nminimum, morning, rhythm — 0123456789',
+'書きかけの文章を読み返す。言い切れなかったことを急いでまとめず、少し空白を置いておく。明日の自分が、別の言葉を見つけるかもしれない。'
+];
+const text=Array.from({length:4},()=>paragraphs.join('\n\n')).join('\n\n');
+for(const area of root.querySelectorAll('textarea'))area.value=text;
+const context=root.querySelector('.sb-context'),area=context.querySelector('textarea');
+let near=false,scrolling=false,timer;
+const render=()=>context.classList.toggle('sb-active',near||scrolling);
+area.addEventListener('pointermove',event=>{near=area.getBoundingClientRect().right-event.clientX<28;render()});
+area.addEventListener('pointerleave',()=>{near=false;render()});
+area.addEventListener('scroll',()=>{scrolling=true;render();clearTimeout(timer);timer=setTimeout(()=>{scrolling=false;render()},1000)});
+if(globalThis.Tweak){
+for(const surface of root.querySelectorAll('.sb-window:not(.sb-none)')){
+const options={width:8};
+const tweak=new Tweak({container:surface,onChange:()=>surface.style.setProperty('--sb-width',options.width+'px')});
+tweak.addSlider(options,'width',{label:'スクロールバーの幅',min:6,max:14,step:1,unit:'px'});
+}
+}
+})();
+</script>
