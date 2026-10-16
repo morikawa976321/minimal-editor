@@ -1,0 +1,75 @@
+<div id="me-archive-toasts">
+  <div class="viz-carousel" aria-label="アーカイブの取り消し表示" data-previous-label="前の案" data-next-label="次の案">
+    <section data-variant="画面下中央"><div class="at-screen at-center" aria-label="画面下中央のトースト"></div></section>
+    <section data-variant="一覧の直下" hidden><div class="at-screen at-attached" aria-label="一覧の直下のトースト"></div></section>
+    <section data-variant="画面左下" hidden><div class="at-screen at-left" aria-label="画面左下のトースト"></div></section>
+  </div>
+</div>
+<style>
+#me-archive-toasts .at-screen{height:570px;position:relative;overflow:hidden;background:#202020;color:#dfdfdf;color-scheme:dark;font:16px/1.5 'Intel One Mono','BIZ UDGothic',monospace}
+#me-archive-toasts .at-screen *{box-sizing:border-box}
+#me-archive-toasts [hidden]{display:none!important}
+#me-archive-toasts .at-paper{padding:52px 48px;font:20px/1.8 'Intel One Mono','BIZ UDGothic',monospace;letter-spacing:.01em;white-space:pre-wrap;color:#dfdfdf}
+#me-archive-toasts .at-shade{position:absolute;inset:0;background:#202020b8;display:flex;align-items:center;justify-content:center;padding:20px}
+#me-archive-toasts .at-group{width:520px;max-width:100%;position:relative}
+#me-archive-toasts .at-dialog{position:relative;background:#292929;border-radius:6px;padding:52px 16px 20px;min-height:290px}
+#me-archive-toasts button{font:inherit;color:inherit;border:0;border-radius:4px;background:transparent}
+#me-archive-toasts .at-close{position:absolute;right:12px;top:8px;width:36px;height:36px;font-size:24px;color:#aaa}
+#me-archive-toasts .at-row{display:block;text-align:left;width:100%;padding:12px 16px;min-height:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#me-archive-toasts .at-row[aria-pressed=true]{background:#414141}
+#me-archive-toasts .at-row:hover{background:#373737}
+#me-archive-toasts .at-toast{position:absolute;z-index:3;display:flex;align-items:center;gap:24px;background:#363636;border-radius:4px;padding:12px 14px 12px 20px;max-width:calc(100% - 32px);box-shadow:0 4px 20px #0003;white-space:nowrap}
+#me-archive-toasts .at-center .at-toast{left:50%;bottom:24px;transform:translateX(-50%)}
+#me-archive-toasts .at-left .at-toast{left:24px;bottom:24px}
+#me-archive-toasts .at-attached .at-toast{top:calc(100% + 12px);left:0;width:100%;max-width:100%;justify-content:space-between;background:#303030}
+#me-archive-toasts .at-message{font-size:14px}
+#me-archive-toasts .at-undo{padding:8px 10px;min-height:40px;font-size:14px;background:#4b4b4b}
+#me-archive-toasts .at-undo:hover{background:#585858}
+@media(max-width:480px){#me-archive-toasts .at-paper{padding:36px 24px}#me-archive-toasts .at-toast{gap:12px;padding:8px 10px 8px 14px}#me-archive-toasts .at-left .at-toast{left:16px}#me-archive-toasts .at-dialog{padding-left:10px;padding-right:10px}}
+</style>
+<script>
+(()=>{
+const root=document.getElementById('me-archive-toasts');
+for(const screen of root.querySelectorAll('.at-screen')){
+  screen.innerHTML='<div class="at-paper">散歩から戻って、窓を開けた。\n\n歩いている間にはまとまらなかったことを、少しずつ書いてみる。\n答えを急がず、いま考えているところから。</div><div class="at-shade"><div class="at-group"><div class="at-dialog" role="dialog" aria-label="メモを選択"><button type="button" class="at-close cursor-interaction" aria-label="一覧を閉じる">×</button><div class="at-list" aria-label="メモ一覧"></div></div></div></div><div class="at-toast" role="status"><span class="at-message">アーカイブしました</span><button class="at-undo cursor-interaction" type="button">取り消す</button></div>';
+  const section=screen.parentElement,shade=screen.querySelector('.at-shade'),list=screen.querySelector('.at-list'),toast=screen.querySelector('.at-toast'),undo=screen.querySelector('.at-undo');
+  if(screen.classList.contains('at-attached'))screen.querySelector('.at-group').append(toast);
+  const memos=[{id:'tools',title:'道具について'},{id:'read',title:'読書の記録'},{id:'walk',title:'散歩のあと'},{id:'ideas',title:'まだ形になっていない考え'}];
+  const archived=new Set(['walk']);let last='walk',selected='read',timer,started=false;
+  const options={seconds:8};
+  function expire(){toast.hidden=true;last=null}
+  function schedule(){clearTimeout(timer);timer=setTimeout(expire,options.seconds*1000)}
+  function render(){
+    list.replaceChildren();
+    for(const memo of [{id:'new',title:'新規メモ'},...memos.filter(m=>!archived.has(m.id))]){
+      const row=document.createElement('button');row.type='button';row.className='at-row cursor-interaction';row.dataset.id=memo.id;row.textContent=memo.title;row.setAttribute('aria-pressed',String(memo.id===selected));
+      row.addEventListener('pointerenter',()=>select(memo.id));row.addEventListener('focus',()=>select(memo.id));row.addEventListener('click',()=>select(memo.id));list.append(row);
+    }
+  }
+  function select(id){selected=id;for(const row of list.children)row.setAttribute('aria-pressed',String(row.dataset.id===id))}
+  function archive(){
+    if(selected==='new'||!selected||archived.has(selected))return;
+    const rows=[...list.children],index=rows.findIndex(row=>row.dataset.id===selected);
+    last=selected;archived.add(selected);render();select(list.children[Math.min(index,list.children.length-1)]?.dataset.id||'new');
+    toast.hidden=false;schedule();
+  }
+  undo.addEventListener('click',()=>{if(!last)return;clearTimeout(timer);archived.delete(last);selected=last;expire();render();list.querySelector('[data-id="'+selected+'"]').focus()});
+  // Give a person reaching for Undo time to use it; there is no animation.
+  toast.addEventListener('pointerenter',()=>clearTimeout(timer));toast.addEventListener('pointerleave',()=>{if(!toast.hidden)schedule()});
+  undo.addEventListener('focus',()=>clearTimeout(timer));undo.addEventListener('blur',()=>{if(!toast.hidden)schedule()});
+  screen.querySelector('.at-close').addEventListener('click',()=>{shade.hidden=true});
+  screen.addEventListener('keydown',event=>{
+    if(event.isComposing||event.keyCode===229)return;
+    if(event.ctrlKey&&event.key.toLowerCase()==='p'){event.preventDefault();shade.hidden=!shade.hidden;return}
+    if(shade.hidden)return;
+    if(event.key==='Delete'){event.preventDefault();archive()}
+    if(event.key==='ArrowUp'||event.key==='ArrowDown'){
+      event.preventDefault();const rows=[...list.children],index=rows.findIndex(row=>row.dataset.id===selected);rows[Math.max(0,Math.min(rows.length-1,index+(event.key==='ArrowDown'?1:-1)))].focus();
+    }
+  });
+  render();
+  const observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)&&!started){started=true;schedule()}});observer.observe(screen);
+  if(globalThis.Tweak){const tweak=new Tweak({container:screen,onChange:()=>{if(!toast.hidden)schedule()}});tweak.addSlider(options,'seconds',{label:'取り消せる時間',min:5,max:20,step:1,unit:'秒'})}
+}
+})();
+</script>
