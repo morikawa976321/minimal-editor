@@ -6,6 +6,61 @@ import {createEditorServer,root} from '../scripts/server.mjs';
 import {createMemoStore} from '../scripts/memo-store.mjs';
 
 function directory(){fs.mkdirSync(path.join(root,'.work'),{recursive:true});return fs.mkdtempSync(path.join(root,'.work/memos-test-'))}
+test('archive preserves every body, backup and history; empty state and restore survive restart',()=>{
+  const dataDir=directory();let time=2000000000000;
+  let store=createMemoStore(dataDir,{now:()=>time});
+  const old=store.get('legacy');store.save(old.id,{revision:old.revision,text:'first draft'});
+  const first=store.get(old.id);store.save(old.id,{revision:first.revision,text:'legacy body'});store.rename(old.id,'manual title');
+  const a=store.create();time++;const b=store.create();
+  store.save(a.id,{revision:a.revision,text:'A body'});store.save(b.id,{revision:b.revision,text:'B body'});
+  const before=store.list();
+  function files(folder){return fs.readdirSync(folder,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?files(path.join(folder,entry.name)):[path.join(folder,entry.name)])}
+  const snapshots=new Map(files(dataDir).filter(file=>!path.basename(file).startsWith('index.json')).map(file=>[file,fs.readFileSync(file)]));
+  let result=store.archive(a.id,true);assert.equal(result.lastId,'legacy');assert.equal(result.current.text,'legacy body');
+  assert.deepEqual(result.memos.map(m=>m.id),[b.id,'legacy']);assert.equal(result.archivedMemos[0].id,a.id);
+  const indexPath=path.join(dataDir,'index.json'),raw=fs.readFileSync(indexPath,'utf8');
+  assert.deepEqual(store.archive(a.id,true),result);assert.equal(fs.readFileSync(indexPath,'utf8'),raw);
+  for(const action of [()=>store.save(a.id,{revision:a.revision,text:'bad'}),()=>store.rename(a.id,'bad'),()=>store.activate(a.id)])assert.throws(action,{status:409});
+  assert.equal(store.get(a.id).text,'A body');
+  result=store.archive('legacy',true);assert.equal(result.lastId,b.id);assert.equal(result.current.text,'B body');
+  result=store.archive(b.id,true);assert.equal(result.current,null);assert.equal(result.lastId,null);assert.deepEqual(result.memos,[]);
+  store=createMemoStore(dataDir,{now:()=>time});assert.equal(store.list().lastId,null);assert.equal(store.list().archivedMemos.length,3);
+  result=store.archive(a.id,false);assert.equal(result.lastId,a.id);assert.equal(result.current.text,'A body');
+  result=store.archive('legacy',false);assert.equal(result.lastId,a.id);assert.equal(result.memos.find(m=>m.id==='legacy').title,'manual title');
+  for(const memo of result.memos)assert.equal(memo.createdAt,before.memos.find(m=>m.id===memo.id).createdAt);
+  store.archive(a.id,true);store.archive('legacy',true);
+  const created=store.create();assert.equal(store.list().lastId,created.id);
+  for(const [file,bytes] of snapshots)assert.deepEqual(fs.readFileSync(file),bytes);
+});
+
+test('archive HTTP requires lease, validates input and blocks legacy writes',async()=>{
+  const dataDir=directory(),port=43140,token='archive-test',server=createEditorServer({port,token,dataDir});
+  await new Promise((ok,no)=>{server.once('error',no);server.listen(port,'127.0.0.1',ok)});
+  const api=(route,method='GET',body)=>fetch(`http://127.0.0.1:${port}/api/${route}`,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',Connection:'close'},body:body===undefined?undefined:JSON.stringify(body)});
+  try{
+    const memo=await(await api('memos/legacy')).json();
+    assert.equal((await api('memos/legacy/archive','PUT',{archived:true})).status,409);
+    const {lease}=await(await api('lease','POST')).json();
+    for(const archived of [null,0,'true'])assert.equal((await api('memos/legacy/archive','PUT',{lease,archived})).status,400);
+    const archived=await api('memos/legacy/archive','PUT',{lease,archived:true});assert.equal(archived.status,200);assert.equal((await archived.json()).current,null);
+    assert.equal((await api('document','PUT',{lease,text:'bad',revision:memo.revision})).status,409);
+    assert.equal((await api('memos/legacy/title','PUT',{lease,title:'bad'})).status,409);
+    assert.equal((await api('active','PUT',{lease,id:'legacy'})).status,409);
+    const restored=await(await api('memos/legacy/archive','PUT',{lease,archived:false})).json();assert.equal(restored.current.id,'legacy');
+  }finally{await new Promise(ok=>server.close(ok))}
+});
+
+test('archive validates next current before commit and invalid stored states fail closed',()=>{
+  const dataDir=directory(),store=createMemoStore(dataDir);store.get('legacy');const a=store.create();
+  const indexPath=path.join(dataDir,'index.json'),raw=fs.readFileSync(indexPath,'utf8');
+  fs.unlinkSync(path.join(dataDir,'memos',a.id+'.txt'));
+  assert.throws(()=>createMemoStore(dataDir).archive('legacy',true),{code:'ENOENT'});
+  assert.equal(fs.readFileSync(indexPath,'utf8'),raw);
+  const value=JSON.parse(raw);
+  for(const malformed of [{...value,lastId:null},{...value,memos:value.memos.map(m=>({...m,archived:true}))},{...value,memos:value.memos.map(m=>({...m,archived:'yes'}))}]){
+    fs.writeFileSync(indexPath,JSON.stringify(malformed));assert.throws(()=>createMemoStore(dataDir).list(),/Invalid memo/);
+  }
+});
 test('initial legacy file is durable and a missing indexed file is never recreated',()=>{
   const dataDir=directory(),file=path.join(dataDir,'web.txt');
   const store=createMemoStore(dataDir),initial=store.get('legacy');
@@ -30,7 +85,7 @@ test('memo persistence, legacy preservation, conflicts, last opened, and HTTP au
   const api=(route,method='GET',body)=>fetch(`http://127.0.0.1:${port}/api/${route}`,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',Connection:'close'},body:body===undefined?undefined:JSON.stringify(body)});
   await start();
   try{
-    assert.equal((await(await api('status')).json()).protocol,3);
+    assert.equal((await(await api('status')).json()).protocol,4);
     const list=await(await api('memos')).json();assert.equal(list.lastId,'legacy');assert.equal(list.memos[0].title,'元の本文');
     assert.equal(fs.readFileSync(path.join(dataDir,'web.txt'),'utf8'),'元の本文');assert.equal(fs.readFileSync(path.join(dataDir,'web.txt.bak'),'utf8'),'前の本文');
     assert.equal((await api('memos','POST',{})).status,409);

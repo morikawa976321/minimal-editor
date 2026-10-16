@@ -102,7 +102,7 @@ try{
   await waitFor(()=>evaluate('document.querySelector("#state").textContent===""'));
   // Real keyboard shortcuts, save-before-switch, creation order and modal dismissal.
   const key=async(key,code,modifiers=0)=>{
-    await cdp('Input.dispatchKeyEvent',{type:'keyDown',key,code,modifiers,windowsVirtualKeyCode:key.length===1?key.toUpperCase().charCodeAt(0):({Enter:13,Escape:27,ArrowUp:38,ArrowDown:40}[key])});
+    await cdp('Input.dispatchKeyEvent',{type:'keyDown',key,code,modifiers,windowsVirtualKeyCode:key.length===1?key.toUpperCase().charCodeAt(0):({Enter:13,Escape:27,ArrowUp:38,ArrowDown:40,Delete:46}[key])});
     await cdp('Input.dispatchKeyEvent',{type:'keyUp',key,code,modifiers});
   };
   await key('p','KeyP',2);
@@ -142,6 +142,8 @@ try{
   await waitFor(()=>evaluate('document.querySelector("#overlay").hidden'));
   assert.equal(fs.readFileSync(path.join(dir,'web.txt'),'utf8'),expectedLive);
   assert.equal(await evaluate('document.querySelector("#editor").value'),'新しいメモ\n本文');
+  // Archive keeps files, moves away from the current memo, and offers durable restore.
+  // Run after title editing below so the named memo can also verify title preservation.
   await evaluate('window.__memoReload=true');await cdp('Page.reload');
   await waitFor(()=>evaluate('!window.__memoReload&&document.querySelector("#editor")&&!document.querySelector("#editor").disabled'));
   assert.equal(await evaluate('document.querySelector("#editor").value'),'新しいメモ\n本文');
@@ -184,6 +186,52 @@ try{
   await evaluate('document.querySelectorAll(".memo")[2].click()');
   await waitFor(()=>evaluate('document.querySelector("#overlay").hidden'));
   assert.equal(await evaluate('document.querySelector("#editor").value'),'新しいメモ\n本文');
+  const getCatalog=async()=>await(await fetch(`http://127.0.0.1:${port}/api/memos`,{headers:{Authorization:'Bearer '+token}})).json();
+  await key('p','KeyP',2);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
+  await key('Delete','Delete');
+  await waitFor(()=>evaluate('!document.querySelector("#archive-toast").hidden'));
+  assert.equal((await getCatalog()).archivedMemos[0].title,'読書の記録');
+  assert.equal(await evaluate('document.querySelector("#editor").value'),'');
+  assert.equal(await evaluate('getComputedStyle(document.querySelector("#archive-toast")).animationName'),'none');
+  const toastPosition=await evaluate(`(()=>{const t=document.querySelector('#archive-toast').getBoundingClientRect(),p=document.querySelector('#picker').getBoundingClientRect();return {top:t.top,bottom:p.bottom}})()`);
+  assert.ok(toastPosition.top>toastPosition.bottom);
+  const archiveImage=await cdp('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(dir,'archive-toast.png'),Buffer.from(archiveImage.data,'base64'));
+  await evaluate('document.querySelector("#undo-archive").click()');
+  await waitFor(async()=>(await getCatalog()).archivedMemos.length===0);
+  await waitFor(()=>evaluate('document.querySelector("#archive-toast").hidden'));
+  // The first archive response is lost after the server committed it; retry is idempotent.
+  await evaluate(`{const original=window.fetch;window.archiveFetch=original;let drop=true;window.fetch=async(...args)=>{const r=await original(...args);if(drop&&String(args[0]).endsWith('/archive')){drop=false;throw new TypeError('lost archive response')}return r}}`);
+  await key('Delete','Delete');
+  await waitFor(()=>evaluate('document.querySelector("#state").textContent.includes("状態を確認")'));
+  assert.equal(await evaluate('document.querySelector("#editor").readOnly'),true);
+  await waitFor(()=>evaluate('!document.querySelector("#archive-toast").hidden&&!document.querySelector("#editor").readOnly'));
+  assert.equal((await getCatalog()).archivedMemos.length,1);
+  await evaluate('window.fetch=window.archiveFetch');
+  await waitFor(()=>evaluate('document.querySelector("#archive-toast").hidden'),10000);
+  await evaluate(`[...document.querySelectorAll('.memo')].find(e=>e.textContent==='アーカイブ').click()`);
+  assert.equal(await evaluate('document.querySelector("#archive-heading").hidden'),false);
+  await evaluate(`[...document.querySelectorAll('.memo')].find(e=>e.textContent==='読書の記録').click()`);
+  await waitFor(async()=>(await getCatalog()).archivedMemos.length===0);
+  await waitFor(()=>evaluate('document.querySelector("#archive-heading").hidden'));
+  // All memos can be archived; the empty state survives reload and permits creation.
+  while((await getCatalog()).memos.length){
+    const before=(await getCatalog()).memos.length;
+    await evaluate(`document.querySelectorAll('.memo')[1].dispatchEvent(new PointerEvent('pointerenter'));document.querySelector('#memo-list').focus()`);
+    await key('Delete','Delete');
+    await waitFor(async()=>(await getCatalog()).memos.length===before-1);
+    await waitFor(()=>evaluate('!document.querySelector("#editor").readOnly'));
+  }
+  assert.equal((await getCatalog()).lastId,null);
+  assert.equal(await evaluate('document.querySelector("#editor").disabled'),true);
+  assert.equal(fs.readFileSync(path.join(dir,'web.txt'),'utf8'),expectedLive);
+  await key('Escape','Escape');await evaluate('window.__emptyReload=true');await cdp('Page.reload');
+  await waitFor(()=>evaluate('!window.__emptyReload&&document.querySelector("#editor")&&document.querySelector("#state").textContent===""'));
+  await key('p','KeyP',2);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
+  assert.equal(await evaluate('document.querySelectorAll(".memo").length'),2);
+  await evaluate('document.querySelector(".memo").click()');
+  await waitFor(()=>evaluate('document.querySelector("#overlay").hidden&&!document.querySelector("#editor").disabled'));
+  assert.equal((await getCatalog()).archivedMemos.length,3);
+  stage('archive undo, expiry restore, lost response, all archived reload passed');
   await cdp('Page.navigate',{url:`http://127.0.0.1:${port}/?token=${token}`});
   await waitFor(()=>evaluate('!!document.querySelector(".best")'));
   await evaluate('document.querySelector(".best").click();document.querySelector(".reason button").click()');

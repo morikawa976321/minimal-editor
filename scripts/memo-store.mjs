@@ -45,17 +45,25 @@ export function createMemoStore(dataDir,{now=Date.now}={}){
       persist({version:1,lastId:'legacy',memos:[{id:'legacy',createdAt:new Date(stat?(stat.birthtimeMs||stat.mtimeMs):now()).toISOString()}]});return;
     }
     const raw=readText(indexFile),value=JSON.parse(raw);
-    if(value.version!==1||!Array.isArray(value.memos)||!value.memos.length||!validId(value.lastId))throw Error('Invalid memo index');
+    if(value.version!==1||!Array.isArray(value.memos)||!value.memos.length||(value.lastId!==null&&!validId(value.lastId)))throw Error('Invalid memo index');
     const ids=new Set();
     for(const memo of value.memos){
       if(!memo||!validId(memo.id)||typeof memo.createdAt!=='string'||!Number.isFinite(Date.parse(memo.createdAt))||ids.has(memo.id))throw Error('Invalid memo index');
       if(memo.title!==undefined&&!validTitle(memo.title))throw Error('Invalid memo title');
+      if(memo.archived!==undefined&&typeof memo.archived!=='boolean')throw Error('Invalid memo archive state');
       ids.add(memo.id);
     }
-    if(!ids.has('legacy')||!ids.has(value.lastId))throw Error('Invalid memo index');
+    const active=value.memos.filter(m=>!m.archived);
+    if(!ids.has('legacy')||(active.length?!active.some(m=>m.id===value.lastId):value.lastId!==null))throw Error('Invalid memo index');
     index=value;indexRaw=raw;
   }
   function requireMemo(id){ensureIndex();if(!validId(id)||!index.memos.some(m=>m.id===id))throw fault(404,'Memo not found')}
+  function requireActive(id){requireMemo(id);if(index.memos.find(m=>m.id===id).archived)throw fault(409,'Memo is archived')}
+  const newest=(a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)||a.id.localeCompare(b.id);
+  function catalog(value){
+    const all=value.memos.map(m=>{const text=get(m.id).text;return {...m,title:m.title??(text.split(/\r?\n/).find(line=>line.trim())?.trim().slice(0,80)||'無題')}}).sort(newest);
+    return {lastId:value.lastId,memos:all.filter(m=>!m.archived),archivedMemos:all.filter(m=>m.archived)};
+  }
   function get(id){
     requireMemo(id);
     if(!cache.has(id)){const text=readText(fileFor(id));cache.set(id,{text,revision:hash(text)})}
@@ -75,9 +83,22 @@ export function createMemoStore(dataDir,{now=Date.now}={}){
   }
   return {
     get,
-    list(){ensureIndex();return {lastId:index.lastId,memos:index.memos.map(m=>{const text=get(m.id).text;return {...m,title:m.title??(text.split(/\r?\n/).find(line=>line.trim())?.trim().slice(0,80)||'無題')}}).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)||a.id.localeCompare(b.id))}},
-    rename(id,title){
+    list(){ensureIndex();return catalog(index)},
+    archive(id,archived){
       requireMemo(id);
+      if(typeof archived!=='boolean')throw fault(400,'Archive state must be boolean');
+      const changed=Boolean(index.memos.find(m=>m.id===id).archived)!==archived;
+      const memos=index.memos.map(m=>m.id===id?{...m,archived}:m);
+      const active=memos.filter(m=>!m.archived).sort(newest);
+      const lastId=active.some(m=>m.id===index.lastId)?index.lastId:(active[0]?.id??null);
+      const next={...index,memos,lastId};
+      // Materialize the entire response before publishing the new active memo.
+      const result={...catalog(next),current:lastId===null?null:get(lastId)};
+      if(changed||lastId!==index.lastId)persist(next);
+      return result;
+    },
+    rename(id,title){
+      requireActive(id);
       if(typeof title!=='string'||/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(title)||!validTitle(title.trim()))throw fault(400,'Invalid memo title');
       title=title.trim();
       if(index.memos.find(m=>m.id===id).title!==title)persist({...index,memos:index.memos.map(m=>m.id===id?{...m,title}:m)});
@@ -89,12 +110,13 @@ export function createMemoStore(dataDir,{now=Date.now}={}){
       try{fs.fsyncSync(fd)}finally{fs.closeSync(fd)}
       // The complete text exists before its index entry is published. An interrupted
       // creation can leave an orphan, but cannot replace any existing memo.
-      persist({...index,memos:[...index.memos,{id,createdAt:new Date(now()).toISOString()}]});
+      persist({...index,lastId:index.lastId??id,memos:[...index.memos,{id,createdAt:new Date(now()).toISOString()}]});
       return get(id);
     },
-    activate(id){requireMemo(id);get(id);if(index.lastId!==id)persist({...index,lastId:id})},
+    activate(id){requireActive(id);get(id);if(index.lastId!==id)persist({...index,lastId:id})},
     save(id,body){
       if(typeof body.text!=='string')throw fault(400,'Text required');
+      requireActive(id);
       const current=get(id),file=fileFor(id);
       if(readText(file)!==current.text)throw fault(409,'File changed outside editor; original retained');
       if(body.revision!==current.revision){if(body.text===current.text)return {id,revision:current.revision};throw fault(409,'Document changed')}

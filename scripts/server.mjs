@@ -35,13 +35,14 @@ export function createEditorServer({port=43127,token,dataDir=path.join(root,'dat
       const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>4*1024*1024){send(res,413,{error:'Too large'});return}chunks.push(chunk)}
       const raw=new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks));
       const body=raw?JSON.parse(raw):{};
-      if(url.pathname==='/api/status'&&req.method==='GET'){send(res,200,{app:'minimal-editor-v0',protocol:3});return}
+      if(url.pathname==='/api/status'&&req.method==='GET'){send(res,200,{app:'minimal-editor-v0',protocol:4});return}
       if(url.pathname==='/api/document'&&req.method==='GET'){
         const {text,revision}=memos.get('legacy');send(res,200,{text,revision});return
       }
       if(url.pathname==='/api/memos'&&req.method==='GET'){send(res,200,memos.list());return}
       const memoRoute=/^\/api\/memos\/([^/]+)$/.exec(url.pathname);
       const titleRoute=/^\/api\/memos\/([^/]+)\/title$/.exec(url.pathname);
+      const archiveRoute=/^\/api\/memos\/([^/]+)\/archive$/.exec(url.pathname);
       if(memoRoute&&req.method==='GET'){send(res,200,memos.get(memoRoute[1]));return}
       if(url.pathname==='/api/lease'){
         if(req.method==='POST'){if(lease&&Date.now()<leaseUntil){send(res,409,{error:'Already open'});return}lease=crypto.randomUUID();leaseUntil=Date.now()+10000;send(res,200,{lease});return}
@@ -52,12 +53,14 @@ export function createEditorServer({port=43127,token,dataDir=path.join(root,'dat
       if((url.pathname==='/api/document'&&req.method==='PUT')||
          (memoRoute&&req.method==='PUT')||
          (titleRoute&&req.method==='PUT')||
+         (archiveRoute&&req.method==='PUT')||
          (url.pathname==='/api/memos'&&req.method==='POST')||
          (url.pathname==='/api/active'&&req.method==='PUT')){
         if(!lease||body.lease!==lease||Date.now()>leaseUntil){send(res,409,{error:'Lease lost'});return}
         let result;
         if(url.pathname==='/api/memos')result=memos.create();
         else if(titleRoute)result=memos.rename(titleRoute[1],body.title);
+        else if(archiveRoute)result=memos.archive(archiveRoute[1],body.archived);
         else if(url.pathname==='/api/active'){memos.activate(body.id);result={}}
         else{result=memos.save(memoRoute?memoRoute[1]:'legacy',body);if(!memoRoute)result={revision:result.revision}}
         leaseUntil=Date.now()+10000;send(res,200,result);return

@@ -17,11 +17,16 @@ textarea::selection{background:#555;color:#dfdfdf}
 #state{position:fixed;right:18px;top:12px;font:12px 'Intel One Mono','BIZ UDGothic',monospace;color:#b0b0b0}
 #state:empty,[hidden]{display:none!important}
 #overlay{position:fixed;inset:0;display:grid;place-items:center;background:#0008;padding:24px}
-#picker{position:relative;box-sizing:border-box;width:min(560px,100%);max-height:75dvh;background:#292929;border-radius:8px;padding:52px 16px 16px;box-shadow:0 16px 64px #0006}
+#picker-group{position:relative;width:min(560px,100%)}
+#picker{position:relative;box-sizing:border-box;width:100%;max-height:calc(100dvh - 180px);background:#292929;border-radius:8px;padding:52px 16px 16px;box-shadow:0 16px 64px #0006}
+#archive-heading{position:absolute;top:18px;left:32px;font-size:12px;color:#aaa}
+#archive-toast{position:absolute;top:calc(100% + 12px);left:0;box-sizing:border-box;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px 12px 20px;background:#303030;border-radius:4px;font-size:14px}
+#undo-archive{border:0;border-radius:4px;padding:8px 10px;min-height:40px;background:#4b4b4b}
+#undo-archive:hover{background:#585858}
 button{font:inherit;color:inherit;cursor:pointer}
 #close{position:absolute;right:14px;top:10px;width:32px;height:32px;border:0;background:transparent;font-size:24px;color:#aaa}
 #close:hover{color:#dfdfdf}
-#memo-list{overflow:auto;max-height:calc(75dvh - 90px);outline:none;scrollbar-color:#666 #292929}
+#memo-list{overflow:auto;max-height:calc(100dvh - 260px);outline:none;scrollbar-color:#666 #292929}
 .memo{display:block;width:100%;text-align:left;padding:12px 16px;border:0;border-radius:4px;background:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:16px;line-height:1.5}
 .memo[aria-selected="true"]{background:#414141}
 .memo:hover{background:#373737}
@@ -34,10 +39,14 @@ button{font:inherit;color:inherit;cursor:pointer}
 <span id="state" role="status" aria-live="polite"></span>
 <div class="editor-shell"><textarea id="editor" aria-label="本文" spellcheck="false" disabled></textarea><button id="scroll-thumb" type="button" aria-label="本文のスクロール位置をドラッグ" aria-controls="editor"></button></div>
 <div id="overlay" hidden>
-  <section id="picker" role="dialog" aria-modal="true" aria-label="メモを切り替える">
+ <div id="picker-group" role="dialog" aria-modal="true" aria-label="メモを切り替える">
+  <section id="picker">
+    <span id="archive-heading" hidden>アーカイブ · 選ぶと戻す</span>
     <button id="close" type="button" aria-label="閉じる">×</button>
     <div id="memo-list" role="listbox" aria-label="メモ" tabindex="0"></div>
   </section>
+  <div id="archive-toast" role="status" hidden><span>アーカイブしました</span><button id="undo-archive" type="button">取り消す</button></div>
+ </div>
 </div>
 <script type="module">
 const token=location.hash.slice(1)||sessionStorage.getItem('token');
@@ -80,6 +89,8 @@ const sessionId=crypto.randomUUID();
 let memoId='legacy',revision,lease,pending=null,unconfirmed=null,saveTask=null;
 let failed=false,ready=false,busy=false,leaseLost=false,notice='';
 let choices=[],selected=0,position=null,renaming=null;
+let catalog=null,archiveView=false,archiveOperation=null,archiveSending=false,undoId=null,toastTimer,toastHovered=false;
+const archiveToast=document.querySelector('#archive-toast'),undoButton=document.querySelector('#undo-archive');
 const journalKey=()=>`unsaved:${sessionId}:${memoId}`;
 function status(message=''){state.textContent=message||notice}
 function journal(){
@@ -131,7 +142,7 @@ function renderList(){
     row.id='memo-option-'+index;row.tabIndex=-1;row.setAttribute('role','option');
     row.setAttribute('aria-selected',String(index===selected));row.textContent=memo.title;
     row.addEventListener('pointerenter',()=>{if(!busy&&!renaming){selected=index;highlight()}});
-    row.addEventListener('click',()=>{if(!renaming)void switchMemo(memo.id,{create:!!memo.create})});list.append(row);
+    row.addEventListener('click',()=>{if(!renaming)void selectChoice(memo)});list.append(row);
   });
   highlight();
 }
@@ -141,7 +152,7 @@ function cancelRename(){
 }
 function beginRename(){
   if(busy||leaseLost||renaming)return;
-  const memo=choices[selected];if(!memo||memo.create)return;
+  const memo=choices[selected];if(!memo||memo.create||memo.view!==undefined||archiveView)return;
   const row=document.createElement('div');row.className='memo title-edit';
   row.id='memo-option-'+selected;row.setAttribute('role','option');row.setAttribute('aria-selected','true');
   const input=document.createElement('input');input.id='title-input';input.type='text';input.maxLength=200;
@@ -172,12 +183,66 @@ async function openPicker(){
   if(!ready||busy||leaseLost)return;
   rememberPosition();busy=true;
   try{
-    const result=await api('memos');choices=[{id:null,title:'新規メモ',create:true},...result.memos];
-    selected=Math.max(0,choices.findIndex(memo=>memo.id===memoId));
-    overlay.hidden=false;renderList();list.focus();
+    catalog=await api('memos');archiveView=false;
+    overlay.hidden=false;selected=0;fillChoices(memoId);list.focus();
   }catch{status('メモ一覧を開けません · 本文はこの画面に残っています')}
   finally{busy=false}
 }
+function fillChoices(preferredId){
+  choices=archiveView
+    ?[{id:null,title:'メモに戻る',view:false},...catalog.archivedMemos]
+    :[{id:null,title:'新規メモ',create:true},...catalog.memos,...(catalog.archivedMemos.length?[{id:null,title:'アーカイブ',view:true}]:[])];
+  const preferred=preferredId?choices.findIndex(m=>m.id===preferredId):-1;
+  selected=preferred>=0?preferred:Math.min(selected,choices.length-1);
+  document.querySelector('#archive-heading').hidden=!archiveView;renderList();
+}
+function selectChoice(memo){
+  if(busy||leaseLost||!memo)return;
+  if(memo.view!==undefined){archiveView=memo.view;selected=0;fillChoices();list.focus();return}
+  if(archiveView)return changeArchive(memo.id,false);
+  return switchMemo(memo.id,{create:!!memo.create});
+}
+function hideToast(){
+  clearTimeout(toastTimer);undoId=null;archiveToast.hidden=true;toastHovered=false;
+  if(document.activeElement===undoButton)list.focus();
+}
+function scheduleToast(){
+  clearTimeout(toastTimer);
+  if(undoId&&!toastHovered&&document.activeElement!==undoButton)toastTimer=setTimeout(hideToast,8000);
+}
+function showToast(id){undoId=id;archiveToast.hidden=false;scheduleToast()}
+archiveToast.addEventListener('pointerenter',()=>{toastHovered=true;clearTimeout(toastTimer)});
+archiveToast.addEventListener('pointerleave',()=>{toastHovered=false;scheduleToast()});
+undoButton.addEventListener('focus',()=>clearTimeout(toastTimer));undoButton.addEventListener('blur',scheduleToast);
+undoButton.addEventListener('click',()=>{if(undoId)void changeArchive(undoId,false)});
+async function changeArchive(id,archived){
+  if(!id||busy||leaseLost||renaming)return;
+  busy=true;editor.readOnly=true;
+  if(!await save()){busy=false;editor.readOnly=leaseLost;return}
+  archiveOperation={id,archived};await runArchiveOperation();
+}
+async function runArchiveOperation(){
+  if(!archiveOperation||archiveSending||leaseLost)return;
+  archiveSending=true;const operation=archiveOperation;
+  try{
+    // Retry the same logical state after response loss; never guess that a mutation failed.
+    const result=await api('memos/'+operation.id+'/archive','PUT',{lease,archived:operation.archived});
+    catalog=result;
+    if((result.current?.id??null)!==memoId){
+      memoId=result.current?.id??null;revision=result.current?.revision;
+      editor.value=result.current?.text??'';editor.disabled=!result.current;
+      editor.scrollTop=0;editor.setSelectionRange(0,0);scrollbar.update();position=null;
+    }
+    archiveOperation=null;busy=false;editor.readOnly=leaseLost;
+    if(!operation.archived)archiveView=false;
+    fillChoices(operation.archived?undefined:operation.id);list.focus();status();
+    if(operation.archived)showToast(operation.id);else hideToast();
+  }catch(error){
+    if(error.status>=400&&error.status<500){archiveOperation=null;busy=false;editor.readOnly=leaseLost;status('変更できません · メモは削除していません')}
+    else status('状態を確認しています · 接続が戻ると自動で再試行します');
+  }finally{archiveSending=false}
+}
+setInterval(()=>{if(archiveOperation)void runArchiveOperation()},2000);
 async function switchMemo(id,{create=false}={}){
   if(!ready||busy||leaseLost)return;
   if(!create&&id===memoId){closePicker();return}
@@ -187,7 +252,7 @@ async function switchMemo(id,{create=false}={}){
     // Load the target completely before recording selection or replacing the textarea.
     const target=create?await api('memos','POST',{lease}):await api('memos/'+id);
     await api('active','PUT',{lease,id:target.id});
-    memoId=target.id;revision=target.revision;editor.value=target.text;scrollbar.update();
+    memoId=target.id;revision=target.revision;editor.value=target.text;editor.disabled=false;scrollbar.update();
     pending=null;unconfirmed=null;failed=false;position=null;
     overlay.hidden=true;editor.scrollTop=0;editor.setSelectionRange(0,0);status();
   }catch{
@@ -220,16 +285,22 @@ document.addEventListener('keydown',event=>{
     event.preventDefault();void switchMemo(null,{create:true});return;
   }
   if(overlay.hidden)return;
+  if(event.key==='Delete'&&!event.ctrlKey&&!event.altKey&&!event.shiftKey){
+    event.preventDefault();const memo=choices[selected];
+    if(event.repeat||document.activeElement===undoButton||document.activeElement===document.querySelector('#close'))return;
+    if(!archiveView&&memo?.id)void changeArchive(memo.id,true);return;
+  }
   if(event.key==='Escape'){event.preventDefault();closePicker()}
   if(event.key==='ArrowDown'||event.key==='ArrowUp'){
     event.preventDefault();if(busy)return;
     selected=Math.max(0,Math.min(choices.length-1,selected+(event.key==='ArrowDown'?1:-1)));highlight();list.focus();
   }
-  if(event.key==='Enter'&&document.activeElement!==document.querySelector('#close')){
-    event.preventDefault();if(choices[selected])void switchMemo(choices[selected].id,{create:!!choices[selected].create});
+  if(event.key==='Enter'&&document.activeElement!==document.querySelector('#close')&&document.activeElement!==undoButton){
+    event.preventDefault();if(choices[selected])void selectChoice(choices[selected]);
   }
   if(event.key==='Tab'){
-    event.preventDefault();(document.activeElement===list?document.querySelector('#close'):list).focus();
+    event.preventDefault();const targets=[list,document.querySelector('#close'),...(!archiveToast.hidden?[undoButton]:[])];
+    const index=targets.indexOf(document.activeElement);targets[(index+(event.shiftKey?-1:1)+targets.length)%targets.length].focus();
   }
 });
 async function recoverJournals(){
@@ -257,7 +328,7 @@ async function recoverJournals(){
 }
 try{
   const service=await api('status');
-  if(service.protocol!==3)throw Object.assign(Error(),{outdated:true});
+  if(service.protocol!==4)throw Object.assign(Error(),{outdated:true});
   lease=(await api('lease','POST')).lease;
   setInterval(async()=>{
     if(leaseLost)return;
@@ -268,9 +339,9 @@ try{
     }
   },3000);
   await recoverJournals();
-  const catalog=await api('memos'),current=await api('memos/'+catalog.lastId);
-  memoId=current.id;revision=current.revision;editor.value=current.text;scrollbar.update();
-  editor.disabled=false;ready=true;editor.focus();status();
+  catalog=await api('memos');const current=catalog.lastId?await api('memos/'+catalog.lastId):null;
+  memoId=current?.id??null;revision=current?.revision;editor.value=current?.text??'';scrollbar.update();
+  editor.disabled=!current;ready=true;editor.focus();status();
 }catch(error){status(error.outdated?'更新のため、すべての minimal-editor を閉じて開き直してください':'開けません · すでに開いている画面がないか確認してください')}
 window.addEventListener('pagehide',()=>{
   if(lease)fetch('/api/lease',{method:'DELETE',headers,body:JSON.stringify({lease}),keepalive:true}).catch(()=>{});
