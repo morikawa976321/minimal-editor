@@ -107,22 +107,22 @@ try{
   };
   await key('p','KeyP',2);
   await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
-  assert.equal(await evaluate('document.querySelector(".memo").textContent'),'新規メモ');
-  assert.equal(await evaluate('[...document.querySelectorAll(".memo")].findIndex(e=>e.getAttribute("aria-selected")==="true")'),1);
-  await key('ArrowUp','ArrowUp');await key('Enter','Enter');
+  assert.equal(await evaluate('[...document.querySelectorAll(".memo")].some(e=>e.textContent==="新規メモ")'),false);
+  assert.equal(await evaluate('[...document.querySelectorAll(".memo")].findIndex(e=>e.getAttribute("aria-selected")==="true")'),0);
+  await key('n','KeyN',2);
   await waitFor(()=>evaluate('document.querySelector("#editor").value===""&&!document.querySelector("#editor").readOnly'));
   await cdp('Input.insertText',{text:'新しいメモ\n本文'});
   await waitFor(()=>evaluate('!Object.keys(localStorage).some(k=>k.startsWith("unsaved:"))'));
   await key('p','KeyP',2);
   await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
-  assert.equal(await evaluate('document.querySelectorAll(".memo").length'),3);
+  assert.equal(await evaluate('document.querySelectorAll(".memo").length'),2);
   assert.equal(await evaluate('document.querySelector(".memo[aria-selected=true]").textContent'),'新しいメモ');
   await key('ArrowDown','ArrowDown');await key('Enter','Enter');
   await waitFor(()=>evaluate('document.querySelector("#overlay").hidden'));
   assert.equal(await evaluate('document.querySelector("#editor").value'),expectedLive);
   for(const dismiss of ['escape','close','outside']){
     await key('p','KeyP',2);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
-    assert.equal(await evaluate('[...document.querySelectorAll(".memo")].findIndex(e=>e.getAttribute("aria-selected")==="true")'),2);
+    assert.equal(await evaluate('[...document.querySelectorAll(".memo")].findIndex(e=>e.getAttribute("aria-selected")==="true")'),1);
     await key('ArrowUp','ArrowUp');
     if(dismiss==='escape')await key('Escape','Escape');
     else await evaluate(`document.querySelector('${dismiss==='close'?'#close':'#overlay'}').click()`);
@@ -134,11 +134,11 @@ try{
   await cdp('Input.insertText',{text:'保存失敗中'});expectedLive+='保存失敗中';
   await waitFor(()=>evaluate('document.querySelector("#state").textContent.startsWith("保存できません")'));
   await key('p','KeyP',2);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
-  await evaluate('document.querySelectorAll(".memo")[1].click()');
+  await evaluate('document.querySelectorAll(".memo")[0].click()');
   await new Promise(r=>setTimeout(r,150));
   assert.equal(await evaluate('document.querySelector("#editor").value'),expectedLive);
   assert.equal(await evaluate('document.querySelector("#overlay").hidden'),false);
-  await evaluate('window.fetch=window.testFetch;document.querySelectorAll(".memo")[1].click()');
+  await evaluate('window.fetch=window.testFetch;document.querySelectorAll(".memo")[0].click()');
   await waitFor(()=>evaluate('document.querySelector("#overlay").hidden'));
   assert.equal(fs.readFileSync(path.join(dir,'web.txt'),'utf8'),expectedLive);
   assert.equal(await evaluate('document.querySelector("#editor").value'),'新しいメモ\n本文');
@@ -150,12 +150,12 @@ try{
   stage('memo switching, failed flush, last memo reload passed');
   await key('p','KeyP',2);
   await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
-  await evaluate('document.querySelector(".memo").click()');
+  await key('n','KeyN',2);
   await waitFor(()=>evaluate('document.querySelector("#overlay").hidden&&document.querySelector("#editor").value===""'));
   await key('p','KeyP',2);
   await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
-  assert.equal(await evaluate('document.querySelectorAll(".memo").length'),4);
-  assert.equal(await evaluate('document.querySelectorAll(".memo")[1].getAttribute("aria-selected")'),'true');
+  assert.equal(await evaluate('document.querySelectorAll(".memo").length'),3);
+  assert.equal(await evaluate('document.querySelectorAll(".memo")[0].getAttribute("aria-selected")'),'true');
   // Rename a selected, unopened memo without changing its text or opening it.
   await key('ArrowDown','ArrowDown');
   await key('m','KeyM',2);
@@ -182,8 +182,8 @@ try{
   await evaluate('window.__renamedReload=true');await cdp('Page.reload');
   await waitFor(()=>evaluate('!window.__renamedReload&&document.querySelector("#editor")&&!document.querySelector("#editor").disabled'));
   await key('p','KeyP',2);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
-  assert.equal(await evaluate('document.querySelectorAll(".memo")[2].textContent'),'読書の記録');
-  await evaluate('document.querySelectorAll(".memo")[2].click()');
+  assert.equal(await evaluate('document.querySelectorAll(".memo")[1].textContent'),'読書の記録');
+  await evaluate('document.querySelectorAll(".memo")[1].click()');
   await waitFor(()=>evaluate('document.querySelector("#overlay").hidden'));
   assert.equal(await evaluate('document.querySelector("#editor").value'),'新しいメモ\n本文');
   const getCatalog=async()=>await(await fetch(`http://127.0.0.1:${port}/api/memos`,{headers:{Authorization:'Bearer '+token}})).json();
@@ -196,7 +196,7 @@ try{
   const toastPosition=await evaluate(`(()=>{const t=document.querySelector('#archive-toast').getBoundingClientRect(),p=document.querySelector('#picker').getBoundingClientRect();return {top:t.top,bottom:p.bottom}})()`);
   assert.ok(toastPosition.top>toastPosition.bottom);
   const archiveImage=await cdp('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(dir,'archive-toast.png'),Buffer.from(archiveImage.data,'base64'));
-  await evaluate('document.querySelector("#undo-archive").click()');
+  await key('z','KeyZ',2);
   await waitFor(async()=>(await getCatalog()).archivedMemos.length===0);
   await waitFor(()=>evaluate('document.querySelector("#archive-toast").hidden'));
   // The first archive response is lost after the server committed it; retry is idempotent.
@@ -207,6 +207,13 @@ try{
   await waitFor(()=>evaluate('!document.querySelector("#archive-toast").hidden&&!document.querySelector("#editor").readOnly'));
   assert.equal((await getCatalog()).archivedMemos.length,1);
   await evaluate('window.fetch=window.archiveFetch');
+  await evaluate('document.querySelector("#undo-archive").click()');
+  await waitFor(async()=>(await getCatalog()).archivedMemos.length===0);
+  await waitFor(()=>evaluate('document.querySelector("#archive-toast").hidden'));
+  await key('Delete','Delete');
+  await waitFor(async()=>(await getCatalog()).archivedMemos.length===1);
+  await waitFor(()=>evaluate('!document.querySelector("#archive-toast").hidden'));
+
   await waitFor(()=>evaluate('document.querySelector("#archive-toast").hidden'),10000);
   await evaluate(`[...document.querySelectorAll('.memo')].find(e=>e.textContent==='アーカイブ').click()`);
   assert.equal(await evaluate('document.querySelector("#archive-heading").hidden'),false);
@@ -216,7 +223,7 @@ try{
   // All memos can be archived; the empty state survives reload and permits creation.
   while((await getCatalog()).memos.length){
     const before=(await getCatalog()).memos.length;
-    await evaluate(`document.querySelectorAll('.memo')[1].dispatchEvent(new PointerEvent('pointerenter'));document.querySelector('#memo-list').focus()`);
+    await evaluate(`document.querySelectorAll('.memo')[0].dispatchEvent(new PointerEvent('pointerenter'));document.querySelector('#memo-list').focus()`);
     await key('Delete','Delete');
     await waitFor(async()=>(await getCatalog()).memos.length===before-1);
     await waitFor(()=>evaluate('!document.querySelector("#editor").readOnly'));
@@ -227,8 +234,8 @@ try{
   await key('Escape','Escape');await evaluate('window.__emptyReload=true');await cdp('Page.reload');
   await waitFor(()=>evaluate('!window.__emptyReload&&document.querySelector("#editor")&&document.querySelector("#state").textContent===""'));
   await key('p','KeyP',2);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
-  assert.equal(await evaluate('document.querySelectorAll(".memo").length'),2);
-  await evaluate('document.querySelector(".memo").click()');
+  assert.equal(await evaluate('document.querySelectorAll(".memo").length'),1);
+  await key('n','KeyN',2);
   await waitFor(()=>evaluate('document.querySelector("#overlay").hidden&&!document.querySelector("#editor").disabled'));
   assert.equal((await getCatalog()).archivedMemos.length,3);
   stage('archive undo, expiry restore, lost response, all archived reload passed');

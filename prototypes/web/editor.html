@@ -152,7 +152,7 @@ function cancelRename(){
 }
 function beginRename(){
   if(busy||leaseLost||renaming)return;
-  const memo=choices[selected];if(!memo||memo.create||memo.view!==undefined||archiveView)return;
+  const memo=choices[selected];if(!memo||memo.view!==undefined||archiveView)return;
   const row=document.createElement('div');row.className='memo title-edit';
   row.id='memo-option-'+selected;row.setAttribute('role','option');row.setAttribute('aria-selected','true');
   const input=document.createElement('input');input.id='title-input';input.type='text';input.maxLength=200;
@@ -191,7 +191,7 @@ async function openPicker(){
 function fillChoices(preferredId){
   choices=archiveView
     ?[{id:null,title:'メモに戻る',view:false},...catalog.archivedMemos]
-    :[{id:null,title:'新規メモ',create:true},...catalog.memos,...(catalog.archivedMemos.length?[{id:null,title:'アーカイブ',view:true}]:[])];
+    :[...catalog.memos,...(catalog.archivedMemos.length?[{id:null,title:'アーカイブ',view:true}]:[])];
   const preferred=preferredId?choices.findIndex(m=>m.id===preferredId):-1;
   selected=preferred>=0?preferred:Math.min(selected,choices.length-1);
   document.querySelector('#archive-heading').hidden=!archiveView;renderList();
@@ -200,7 +200,7 @@ function selectChoice(memo){
   if(busy||leaseLost||!memo)return;
   if(memo.view!==undefined){archiveView=memo.view;selected=0;fillChoices();list.focus();return}
   if(archiveView)return changeArchive(memo.id,false);
-  return switchMemo(memo.id,{create:!!memo.create});
+  return switchMemo(memo.id);
 }
 function hideToast(){
   clearTimeout(toastTimer);undoId=null;archiveToast.hidden=true;toastHovered=false;
@@ -274,6 +274,9 @@ document.addEventListener('keydown',event=>{
       event.preventDefault();(document.activeElement===renaming.input?document.querySelector('#close'):renaming.input).focus();
     }else if(event.ctrlKey&&['p','n','m'].includes(event.key.toLowerCase()))event.preventDefault();
     return;
+  }
+  if(!overlay.hidden&&event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='z'){
+    event.preventDefault();if(undoId&&!event.repeat)void changeArchive(undoId,false);return;
   }
   if(!overlay.hidden&&event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='m'){
     event.preventDefault();beginRename();return;
