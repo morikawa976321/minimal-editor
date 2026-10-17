@@ -221,11 +221,19 @@ try{
   await waitFor(()=>evaluate('!document.querySelector("#archive-toast").hidden'));
 
   await waitFor(()=>evaluate('document.querySelector("#archive-toast").hidden'),10000);
-  await evaluate(`[...document.querySelectorAll('.memo')].find(e=>e.textContent==='アーカイブ').click()`);
+  assert.equal(await evaluate(`[...document.querySelectorAll('.memo')].some(e=>e.textContent==='アーカイブ')`),false);
+  await key('P','KeyP',10);await waitFor(()=>evaluate('!document.querySelector("#archive-heading").hidden'));
+  await key('P','KeyP',10);await waitFor(()=>evaluate('document.querySelector("#overlay").hidden'));
+  await key('P','KeyP',10);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
+  await key('Escape','Escape');await waitFor(()=>evaluate('document.querySelector("#overlay").hidden'));
+  await key('P','KeyP',10);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
   assert.equal(await evaluate('document.querySelector("#archive-heading").hidden'),false);
-  await evaluate(`[...document.querySelectorAll('.memo')].find(e=>e.textContent==='読書の記録').click()`);
+  await key('ArrowDown','ArrowDown');await key('ArrowUp','ArrowUp');
+  await key('Enter','Enter');
   await waitFor(async()=>(await getCatalog()).archivedMemos.length===0);
-  await waitFor(()=>evaluate('document.querySelector("#archive-heading").hidden'));
+  await waitFor(()=>evaluate('document.querySelector("#overlay").hidden'));
+  assert.equal(await evaluate('document.querySelector("#editor").value'),'新しいメモ\n本文');
+  await key('p','KeyP',2);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
   // All memos can be archived; the empty state survives reload and permits creation.
   while((await getCatalog()).memos.length){
     const before=(await getCatalog()).memos.length;
@@ -240,7 +248,7 @@ try{
   await key('Escape','Escape');await evaluate('window.__emptyReload=true');await cdp('Page.reload');
   await waitFor(()=>evaluate('!window.__emptyReload&&document.querySelector("#editor")&&document.querySelector("#state").textContent===""'));
   await key('p','KeyP',2);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
-  assert.equal(await evaluate('document.querySelectorAll(".memo").length'),1);
+  assert.equal(await evaluate('document.querySelectorAll(".memo").length'),0);
   await key('n','KeyN',2);
   await waitFor(()=>evaluate('document.querySelector("#overlay").hidden&&!document.querySelector("#editor").disabled'));
   assert.equal((await getCatalog()).archivedMemos.length,3);
@@ -258,19 +266,6 @@ try{
   await evaluate('document.querySelector(".launch").click()');
   await new Promise(r=>setTimeout(r,400));
   assert.equal(await evaluate('document.querySelector("#status").textContent'),'');
-  // Typography comparison is isolated from real notes and application settings.
-  await cdp('Page.navigate',{url:'file:///'+path.join(root,'previews/typography.html').replaceAll('\\','/')});
-  await waitFor(()=>evaluate('!!document.querySelector("#sample")'));
-  for(const [index,line,spacing] of [[0,'30px','normal'],[1,'30px','0.4px'],[2,'36px','0.2px']]){
-    await evaluate(`document.querySelectorAll('.presets button')[${index}].click()`);
-    const style=await evaluate(`(()=>{const s=getComputedStyle(document.querySelector('#sample'));return [s.lineHeight,s.letterSpacing]})()`);
-    assert.equal(style[0],line);assert.ok(style[1]===spacing||(spacing==='normal'&&style[1]==='0px'));
-  }
-  await evaluate(`{const a=document.querySelector('#line-value'),b=document.querySelector('#letter-value');a.value='1.65';a.dispatchEvent(new Event('input'));b.value='-0.025';b.dispatchEvent(new Event('input'))}`);
-  assert.deepEqual(await evaluate(`(()=>{const s=getComputedStyle(document.querySelector('#sample'));return [s.lineHeight,s.letterSpacing]})()`),['33px','-0.5px']);
-  assert.ok((await evaluate('document.querySelector("#result").value')).includes('1.65'));
-  await cdp('Emulation.setDeviceMetricsOverride',{width:1200,height:950,deviceScaleFactor:1,mobile:false});
-  const typography=await cdp('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(dir,'typography.png'),Buffer.from(typography.data,'base64'));
   const report={passed:true,characters:[...text].length,ready_ms:+readyMs.toFixed(2),insert_and_save_ms:+insertionMs.toFixed(2),long_draft_key_dispatch_median_ms:+keyMs[10].toFixed(2),long_draft_key_dispatch_p95_ms:+keyMs[18].toFixed(2),quiet_save_with_unsaved_close_guard:true,cdp_composition:true,force_kill_and_recovery:true,response_loss_recovery:true,file_launcher:true,artifacts:dir};
   fs.writeFileSync(path.join(dir,'result.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 }finally{

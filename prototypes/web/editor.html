@@ -39,7 +39,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 <div id="overlay" hidden>
  <div id="picker-group" role="dialog" aria-modal="true" aria-label="メモを切り替える">
   <section id="picker">
-    <span id="archive-heading" hidden>アーカイブ · 選ぶと戻す</span>
+    <span id="archive-heading" hidden>アーカイブ</span>
     <div id="memo-list" role="listbox" aria-label="メモ" tabindex="0"></div>
   </section>
   <div id="archive-toast" role="status" hidden><span>アーカイブしました</span><button id="undo-archive" type="button">取り消す</button></div>
@@ -176,27 +176,28 @@ function highlight(){
   const row=list.children[selected];
   if(row){list.setAttribute('aria-activedescendant',row.id);row.scrollIntoView({block:'nearest'})}
 }
-async function openPicker(){
+async function openPicker(archived=false){
   if(!ready||busy||leaseLost)return;
   rememberPosition();busy=true;
   try{
-    catalog=await api('memos');archiveView=false;
+    catalog=await api('memos');archiveView=archived;hideToast();
     overlay.hidden=false;selected=0;fillChoices(memoId);list.focus();
   }catch{status('メモ一覧を開けません · 本文はこの画面に残っています')}
   finally{busy=false}
 }
 function fillChoices(preferredId){
   choices=archiveView
-    ?[{id:null,title:'メモに戻る',view:false},...catalog.archivedMemos]
-    :[...catalog.memos,...(catalog.archivedMemos.length?[{id:null,title:'アーカイブ',view:true}]:[])];
+    ?catalog.archivedMemos
+    :catalog.memos;
   const preferred=preferredId?choices.findIndex(m=>m.id===preferredId):-1;
   selected=preferred>=0?preferred:Math.min(selected,choices.length-1);
-  document.querySelector('#archive-heading').hidden=!archiveView;renderList();
+  document.querySelector('#archive-heading').hidden=!archiveView;
+  document.querySelector('#picker-group').setAttribute('aria-label',archiveView?'アーカイブ':'メモを切り替える');
+  list.setAttribute('aria-label',archiveView?'アーカイブ':'メモ');renderList();
 }
 function selectChoice(memo){
   if(busy||leaseLost||!memo)return;
-  if(memo.view!==undefined){archiveView=memo.view;selected=0;fillChoices();list.focus();return}
-  if(archiveView)return changeArchive(memo.id,false);
+  if(archiveView)return changeArchive(memo.id,false,{open:true});
   return switchMemo(memo.id);
 }
 function hideToast(){
@@ -212,11 +213,11 @@ archiveToast.addEventListener('pointerenter',()=>{toastHovered=true;clearTimeout
 archiveToast.addEventListener('pointerleave',()=>{toastHovered=false;scheduleToast()});
 undoButton.addEventListener('focus',()=>clearTimeout(toastTimer));undoButton.addEventListener('blur',scheduleToast);
 undoButton.addEventListener('click',()=>{if(undoId)void changeArchive(undoId,false)});
-async function changeArchive(id,archived){
+async function changeArchive(id,archived,{open=false}={}){
   if(!id||busy||leaseLost||renaming)return;
   busy=true;editor.readOnly=true;
   if(!await save()){busy=false;editor.readOnly=leaseLost;return}
-  archiveOperation={id,archived};await runArchiveOperation();
+  archiveOperation={id,archived,open};await runArchiveOperation();
 }
 async function runArchiveOperation(){
   if(!archiveOperation||archiveSending||leaseLost)return;
@@ -234,6 +235,7 @@ async function runArchiveOperation(){
     if(!operation.archived)archiveView=false;
     fillChoices(operation.archived?undefined:operation.id);list.focus();status();
     if(operation.archived)showToast(operation.id);else hideToast();
+    if(operation.open)await switchMemo(operation.id);
   }catch(error){
     if(error.status>=400&&error.status<500){archiveOperation=null;busy=false;editor.readOnly=leaseLost;status('変更できません · メモは削除していません')}
     else status('状態を確認しています · 接続が戻ると自動で再試行します');
@@ -261,7 +263,8 @@ async function switchMemo(id,{create=false}={}){
 }
 document.addEventListener('keydown',event=>{
   if(event.isComposing||event.keyCode===229)return;
-  if(!overlay.hidden&&(event.key==='Escape'||(event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='p'))){
+  const pickerKey=event.ctrlKey&&!event.altKey&&event.key.toLowerCase()==='p';
+  if(!overlay.hidden&&(event.key==='Escape'||(pickerKey&&event.shiftKey===archiveView))){
     event.preventDefault();closePicker();return;
   }
   if(renaming){
@@ -277,8 +280,8 @@ document.addEventListener('keydown',event=>{
   if(!overlay.hidden&&event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='m'){
     event.preventDefault();beginRename();return;
   }
-  if(event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='p'){
-    event.preventDefault();if(overlay.hidden)void openPicker();else closePicker();return;
+  if(pickerKey){
+    event.preventDefault();if(!event.repeat)void openPicker(event.shiftKey);return;
   }
   if(event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='n'){
     event.preventDefault();void switchMemo(null,{create:true});return;
