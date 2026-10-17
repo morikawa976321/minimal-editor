@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>minimal-editor · 比較</title>
+<style>
+:root{color-scheme:dark;background:#202020;color:#dfdfdf;font:16px/1.8 'Intel One Mono','BIZ UDGothic',monospace}body{max-width:820px;margin:56px auto;padding:0 28px}h1,h2{font-weight:400}h1{font-size:22px;margin-bottom:36px}h2{font-size:19px}main{display:grid;grid-template-columns:1fr 1fr;gap:48px}button{font:inherit;color:inherit;background:#343434;border:0;border-radius:4px;padding:9px 16px;margin:4px 8px 4px 0;cursor:pointer}button:hover{background:#414141}button[aria-pressed=true]{background:#666}.problems{margin-top:20px}.problems button{font-size:13px;padding:5px 10px}#choice{margin:32px 0 20px}small,details{color:#b0b0b0;font-size:13px}summary{cursor:pointer}textarea{box-sizing:border-box;width:100%;min-height:180px;padding:18px;margin-top:22px;font:14px/1.8 'BIZ UDGothic',monospace;background:#292929;color:inherit;border:0;resize:vertical}#state{min-height:25px;font-size:13px;color:#dfb8a5}@media(max-width:550px){main{grid-template-columns:1fr;gap:20px}}
+</style>
+<h1>minimal-editor</h1>
+<main>
+ <section data-kind="web"><h2>ブラウザ版</h2><button class="launch">開く</button><button class="select">こちらがよい</button><div class="problems"></div></section>
+ <section data-kind="native"><h2>ネイティブ版</h2><button class="launch">開く</button><button class="select">こちらがよい</button><div class="problems"></div></section>
+</main>
+<div id="choice"><button data-choice="どちらも問題ない">どちらも問題ない</button><button data-choice="どちらも合わない">どちらも合わない</button><button data-choice="保留">保留</button></div>
+<details><summary>判断カード</summary><p>使い続けたいのはどちら？</p><p>現在の推奨はブラウザ版の継続。ネイティブ版の実IMEとHandyの使い心地は、この比較で確かめます。</p><p>「ネイティブ版」を選ぶと次の採用判断の材料になります。自動で切り替えたり、原稿を統合したりはしません。どちらも問題なければ、メモリが少ない方を候補にします。</p></details>
+<p><small>ネイティブ版は初回起動時の原稿コピー。以後の編集はそれぞれに保存。</small></p>
+<div id="state" role="status"></div><textarea id="result" aria-label="比較結果" readonly></textarea><button id="copy">結果をコピー</button>
+<script>
+const token=location.hash.slice(1)||sessionStorage.getItem('native-comparison-token');
+if(token){sessionStorage.setItem('native-comparison-token',token);history.replaceState(null,'',location.pathname)}
+const names={web:'ブラウザ版',native:'ネイティブ版'};
+let selected={choice:'未選択',problems:{web:[],native:[]}};
+try{selected=JSON.parse(localStorage.getItem('native-comparison-result'))||selected}catch{}
+const area=document.querySelector('#result'),state=document.querySelector('#state');
+async function api(route,body){const response=await fetch('/api/'+route,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});if(!response.ok)throw Error((await response.json()).error||'起動できません');return response.json()}
+function render(){area.value=['minimal-editor ネイティブ比較','選択: '+selected.choice,...Object.keys(names).map(k=>names[k]+': '+(selected.problems[k].length?selected.problems[k].join('／'):'問題の選択なし'))].join('\n');document.querySelectorAll('[data-choice]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.choice===selected.choice));document.querySelectorAll('.select').forEach(b=>b.setAttribute('aria-pressed',names[b.closest('section').dataset.kind]===selected.choice));try{localStorage.setItem('native-comparison-result',JSON.stringify(selected))}catch{}}
+for(const section of document.querySelectorAll('section')){
+ const kind=section.dataset.kind;
+ section.querySelector('.launch').onclick=async()=>{state.textContent='';try{await api('launch',{kind})}catch(error){state.textContent=error.message}};
+ section.querySelector('.select').onclick=()=>{selected.choice=names[kind];render()};
+ for(const reason of ['入力','見た目','操作','速さ','保存','起動']){const button=document.createElement('button');button.textContent=reason;button.setAttribute('aria-pressed',selected.problems[kind].includes(reason));button.onclick=()=>{const reasons=selected.problems[kind],at=reasons.indexOf(reason);at<0?reasons.push(reason):reasons.splice(at,1);button.setAttribute('aria-pressed',reasons.includes(reason));render()};section.querySelector('.problems').append(button)}
+}
+document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{selected.choice=b.dataset.choice;render()});
+document.querySelector('#copy').onclick=async()=>{try{await navigator.clipboard.writeText(area.value);state.textContent='コピーしました'}catch{area.select();state.textContent=document.execCommand('copy')?'コピーしました':'結果を選択しました'}};
+const heartbeat=()=>api('heartbeat',{}).catch(()=>{});heartbeat();setInterval(heartbeat,15000);render();
+</script></html>

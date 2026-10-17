@@ -1,5 +1,7 @@
 # minimal-editor
 
+2026-10-18追加: 現行のブラウザ版を保ったまま、見た目と操作を近づけたRust/Win32ネイティブ版を比較できるようにした。リポジトリ直下の **`ネイティブ比較.vbs`** をダブルクリック。ネイティブ単独は **`ネイティブ版.vbs`**。原稿は初回コピー後に独立保存する。詳細は [比較の案内](docs/native-comparison.md)、10MBの技術構成と測定は [メモリの検討](docs/native-memory-options.md)。
+
 AIと独立して一人で文章を書くための、設定機能すら持たないミニマルエディターを自作するプロジェクト(本人の構想 2026-10-14)。
 
 - 常時の規則: [AGENTS.md](AGENTS.md)(親セッションは Codex の astra。権限・委譲先・判断の扱い・本人の基準)
@@ -26,7 +28,7 @@ A（Edge app window）を本人が採用。タブやアドレスバーのない�
 ## 再構築
 
 普段の起動は、この PC の既存 Node 24、Edge、Windows PowerShellを使う。依存パッケージの追加は不要。
-Rust / Python は旧B/Cとその試験だけに必要。
+Rustはネイティブ版と旧Bの再構築、PythonはGUIの自動検証と旧Cに使う。構築済みネイティブexeの実行にRustは不要。
 
 ```powershell
 node scripts/bootstrap.mjs --no-open
