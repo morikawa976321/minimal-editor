@@ -47,3 +47,6 @@
 
 - 2026-10-18: アーカイブを専用モーダルへ分離し、復元後の本文切替までEdge試験で確認。ローカル接続はsandboxでEACCESになったため、許可済みの隔離試験をsandbox外で実行してPASS。
 - 同日: CIMで空きRAM取得が拒否されたためNode os.freememで1.35GBと実測。ビルドや並列ブラウザーは起動せず、既存の単一headless試験だけ実施。掃除は解決済み絶対パスを確認し177対象・2,914,271,066 bytesを削除。
+
+- 2026-10-18: メモリの質問に、既存nativeとNodeをprivate desktopで各3起動測定して回答。空きRAM1.6GiBのためブラウザ比較は省略。共有込みworking setと専用RAM・コミットを区別し、全機能未移植の試作の小ささを完成版の10MB保証として扱わなかった。
+- 同日: CreateDesktopWがsandboxで拒否されたため、試験所有jobと隔離本文だけを使う既存方式でsandbox外測定。GetProcessMemoryInfoのEX2で専用RAMを追加取得し、異なる指標の見かけの削減率を作らなかった。
