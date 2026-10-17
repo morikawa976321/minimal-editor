@@ -60,7 +60,7 @@ try{
   await waitFor(()=>evaluate('getComputedStyle(document.querySelector("#scroll-thumb")).visibility==="hidden"'));
   // Kill both after a confirmed disk save, without running close handlers.
   server.kill();await once(server,'exit');
-  killBrowser();await once(browser,'exit');ws.close();ws=null;stage('first forced exit');
+  {const exited=browser.exitCode===null?once(browser,'exit'):Promise.resolve();killBrowser();await exited}ws.close();ws=null;stage('first forced exit');
   await startServer();
   // New browser must reopen the confirmed disk save.
   const profile2=path.join(dir,'profile2');
@@ -120,12 +120,15 @@ try{
   await key('ArrowDown','ArrowDown');await key('Enter','Enter');
   await waitFor(()=>evaluate('document.querySelector("#overlay").hidden'));
   assert.equal(await evaluate('document.querySelector("#editor").value'),expectedLive);
-  for(const dismiss of ['escape','close','outside']){
+  assert.equal(await evaluate('document.querySelector("#close")'),null);
+  for(const dismiss of ['escape','shortcut']){
     await key('p','KeyP',2);await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
     assert.equal(await evaluate('[...document.querySelectorAll(".memo")].findIndex(e=>e.getAttribute("aria-selected")==="true")'),1);
     await key('ArrowUp','ArrowUp');
+    await evaluate('document.querySelector("#overlay").click()');
+    assert.equal(await evaluate('document.querySelector("#overlay").hidden'),false);
     if(dismiss==='escape')await key('Escape','Escape');
-    else await evaluate(`document.querySelector('${dismiss==='close'?'#close':'#overlay'}').click()`);
+    else await key('p','KeyP',2);
     assert.equal(await evaluate('document.querySelector("#overlay").hidden'),true);
     assert.equal(await evaluate('document.querySelector("#editor").value'),expectedLive);
   }
@@ -163,7 +166,10 @@ try{
   assert.equal(await evaluate('document.querySelector("#title-input").value'),'新しいメモ');
   await cdp('Input.insertText',{text:'変更しない名前'});
   await key('Escape','Escape');
-  assert.equal(await evaluate('document.querySelector("#overlay").hidden'),false);
+  assert.equal(await evaluate('document.querySelector("#overlay").hidden'),true);
+  await key('p','KeyP',2);
+  await waitFor(()=>evaluate('!document.querySelector("#overlay").hidden'));
+  await key('ArrowDown','ArrowDown');
   assert.equal(await evaluate('document.querySelector(".memo[aria-selected=true]").textContent'),'新しいメモ');
   await key('m','KeyM',2);
   await cdp('Input.insertText',{text:'読書の記録'});
@@ -269,6 +275,6 @@ try{
   fs.writeFileSync(path.join(dir,'result.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 }finally{
   if(ws)ws.close();
-  if(browser&&browser.exitCode===null){killBrowser();await once(browser,'exit')}
+  if(browser&&browser.exitCode===null){const exited=once(browser,'exit');killBrowser();await exited}
   if(server&&server.exitCode===null){server.kill();await once(server,'exit')}
 }

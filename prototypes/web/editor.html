@@ -24,8 +24,6 @@ textarea::selection{background:#555;color:#dfdfdf}
 #undo-archive{border:0;border-radius:4px;padding:8px 10px;min-height:40px;background:#4b4b4b}
 #undo-archive:hover{background:#585858}
 button{font:inherit;color:inherit;cursor:pointer}
-#close{position:absolute;right:14px;top:10px;width:32px;height:32px;border:0;background:transparent;font-size:24px;color:#aaa}
-#close:hover{color:#dfdfdf}
 #memo-list{overflow:auto;max-height:calc(100dvh - 260px);outline:none;scrollbar-color:#666 #292929}
 .memo{display:block;width:100%;text-align:left;padding:12px 16px;border:0;border-radius:4px;background:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:16px;line-height:1.5}
 .memo[aria-selected="true"]{background:#414141}
@@ -33,7 +31,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .title-edit{box-sizing:border-box;background:#414141}
 .title-edit input{box-sizing:border-box;width:100%;padding:0;border:0;background:transparent;color:inherit;font:inherit;line-height:inherit;outline-offset:4px}
 .title-error{margin:8px 0 0;font-size:12px;white-space:normal;color:#dfb8a5}
-.memo:focus-visible,#close:focus-visible{outline:1px solid #aaa;outline-offset:-2px}
+.memo:focus-visible{outline:1px solid #aaa;outline-offset:-2px}
 @media(max-width:600px){textarea{padding:36px 24px}}
 </style>
 <span id="state" role="status" aria-live="polite"></span>
@@ -42,7 +40,6 @@ button{font:inherit;color:inherit;cursor:pointer}
  <div id="picker-group" role="dialog" aria-modal="true" aria-label="メモを切り替える">
   <section id="picker">
     <span id="archive-heading" hidden>アーカイブ · 選ぶと戻す</span>
-    <button id="close" type="button" aria-label="閉じる">×</button>
     <div id="memo-list" role="listbox" aria-label="メモ" tabindex="0"></div>
   </section>
   <div id="archive-toast" role="status" hidden><span>アーカイブしました</span><button id="undo-archive" type="button">取り消す</button></div>
@@ -262,16 +259,15 @@ async function switchMemo(id,{create=false}={}){
     if(overlay.hidden)editor.focus();else list.focus();
   }
 }
-document.querySelector('#close').addEventListener('click',closePicker);
-overlay.addEventListener('click',event=>{if(event.target===overlay)closePicker()});
 document.addEventListener('keydown',event=>{
   if(event.isComposing||event.keyCode===229)return;
+  if(!overlay.hidden&&(event.key==='Escape'||(event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='p'))){
+    event.preventDefault();closePicker();return;
+  }
   if(renaming){
-    if(event.key==='Enter'&&document.activeElement===document.querySelector('#close'))return;
     if(event.key==='Enter'){event.preventDefault();void confirmRename()}
-    else if(event.key==='Escape'){event.preventDefault();cancelRename()}
     else if(event.key==='Tab'){
-      event.preventDefault();(document.activeElement===renaming.input?document.querySelector('#close'):renaming.input).focus();
+      event.preventDefault();renaming.input.focus();
     }else if(event.ctrlKey&&['p','n','m'].includes(event.key.toLowerCase()))event.preventDefault();
     return;
   }
@@ -290,7 +286,7 @@ document.addEventListener('keydown',event=>{
   if(overlay.hidden)return;
   if(event.key==='Delete'&&!event.ctrlKey&&!event.altKey&&!event.shiftKey){
     event.preventDefault();const memo=choices[selected];
-    if(event.repeat||document.activeElement===undoButton||document.activeElement===document.querySelector('#close'))return;
+    if(event.repeat||document.activeElement===undoButton)return;
     if(!archiveView&&memo?.id)void changeArchive(memo.id,true);return;
   }
   if(event.key==='Escape'){event.preventDefault();closePicker()}
@@ -298,11 +294,11 @@ document.addEventListener('keydown',event=>{
     event.preventDefault();if(busy)return;
     selected=Math.max(0,Math.min(choices.length-1,selected+(event.key==='ArrowDown'?1:-1)));highlight();list.focus();
   }
-  if(event.key==='Enter'&&document.activeElement!==document.querySelector('#close')&&document.activeElement!==undoButton){
+  if(event.key==='Enter'&&document.activeElement!==undoButton){
     event.preventDefault();if(choices[selected])void selectChoice(choices[selected]);
   }
   if(event.key==='Tab'){
-    event.preventDefault();const targets=[list,document.querySelector('#close'),...(!archiveToast.hidden?[undoButton]:[])];
+    event.preventDefault();const targets=[list,...(!archiveToast.hidden?[undoButton]:[])];
     const index=targets.indexOf(document.activeElement);targets[(index+(event.shiftKey?-1:1)+targets.length)%targets.length].focus();
   }
 });
