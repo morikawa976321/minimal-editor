@@ -363,3 +363,5 @@ Edgeの実描画フォントがIntel One Mono / BIZ UDGothicであること、14
 なし。追加の判断は不要。
 
 検証: 実Edgeの隔離試験PASS（.work/web-ui-u17yzZ）。新規欄がないこと、Ctrl+N作成、Ctrl+Zとボタンの取消、期限後の復元と既存保存試験を確認。
+
+- 2026-10-17: 本人の依頼で docs/shortcuts.md に現行のキー操作を整理。Git管理済みでprivate originへpush済み。data/ は .gitkeep 以外追跡なし、本文・台帳・履歴・復元コピーと .work/ は既存ignoreで除外されていることを確認。
