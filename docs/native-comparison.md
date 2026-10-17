@@ -77,6 +77,20 @@
 
 さらに、CSSのフォントフォールバックとRich Editのフォント関連付け、文字幅・行末禁則・折返しの処理が異なる。最大幅・余白の目標は揃えているが、実際の本文領域はウィンドウ寸法やDPIにも依存する。本人の比較を同じ本文・同じ実効幅で測定していないため、観測された文字数差の全量を字間だけのせいとは断定しない。両方の文書が異なる意味で保存されている、という差ではない。
 
+### フォントの太さが違って見える理由
+
+本人の追加質問（2026-10-18）:
+
+> フォントの見た目、特に太さが変わったのだが、これはなぜ?
+
+コード上、ブラウザ本文はfont shorthandのnormal（400相当）、20px。ネイティブはフォント名・サイズ等を指定するが、CFM_WEIGHTやCFM_BOLDを指定しておらず太さはRich Editの既定値を使っていた。ゼロ初期化されたweight欄が0だから極細になる、という意味ではない。指定マスクに含まれない欄は適用されない（[CHARFORMAT2W](https://learn.microsoft.com/en-us/windows/win32/api/richedit/ns-richedit-charformat2w_1)）。
+
+推測だけで済ませず、既存build/native-next.exeを専用の非表示desktopで起動し、隔離データへ「abc日本語ABC」を入力。対象プロセス内に確保した116byteのCHARFORMAT2Wを使ってEM_GETCHARFORMATを読み出した。既定書式と英字・日本語の各選択範囲でweight 400・bold false・height 300twipsを確認。英字はIntel One Mono、日本語はBIZ UDゴシック（charset 128、CFE_FONTBOUND）だった。結果は `.work/native-font-7c568i48/result.json`、調査スクリプトは `.work/font_probe.py`。表示倍率は125%。本人の画面や実原稿に触れていない。
+
+同じ400でも文字の輪郭をピクセルへ変換する方法、ピクセル位置への丸め、アンチエイリアスと濃度補正が違うと太さが違って見える。ブラウザはChromiumのDirectWrite/Skiaを組み合わせる描画経路、比較版はMsftedit.dllのRICHEDIT50W入力部品を使用する。Microsoftの [RichEditD2Dの解説](https://devblogs.microsoft.com/math-in-office/richeditd2d-window-controls/) は従来のGDI/UniscribeとD2D/DirectWriteの経路を区別している。また [Edgeの描画解説](https://blogs.windows.com/msedgedev/2025/01/30/better-text-contrast-for-all-chromium-based-browsers-on-windows/) も、描画経路とコントラスト・ガンマ補正が、特にCJK文字の濃さに影響することを説明している。古いChromiumの薄い描画が現在もそのまま残るという説明にはしない。
+
+今回確認できたのは「ブラウザのCSS指定とネイティブの書式の太さはどちらも400で、ネイティブは太字になっていない」こと。描画の差が有力だが、本人が開いたブラウザの実使用フォント、拡大率、両画面の実ピクセルと補正値までは測っていないため、原因を一つへ断定しない。ネイティブで日本語のフォント関連付けが働くことは確認できたが、それだけでブラウザの各文字も同じ物理フォントファイルだとは確定しない。同じ名前とサイズを指定するだけでは外観一致の保証にならない。今回は理由を説明し、太さの調整や描画方式の変更は行わない。
+
 採用カードの選択肢は以下に残す。今回の依頼は技術説明であり、同じ比較をやり直すよう求めるものではない。
 
 ## 採用判断のカード（参考）
