@@ -14,6 +14,7 @@ from private_desktop import run, verify_desktop, screenshot
 from memory_desktop import sample
 
 send = gui.bind(gui.U, "SendMessageW", C.c_ssize_t, [W.HWND, W.UINT, W.WPARAM, W.LPARAM])
+move = gui.bind(gui.U, "MoveWindow", W.BOOL, [W.HWND, C.c_int, C.c_int, C.c_int, C.c_int, W.BOOL])
 
 
 def child(folder, desktop):
@@ -84,6 +85,12 @@ def child(folder, desktop):
         assert first["visible"] and not first["error"], first
         assert first["fontTwips"] == 300 and first["lineSpacingTwips"] == 540 and first["lineRule"] == 4, first
         assert first["formatRect"][1] == round(60 * first["scale"]), first
+        gui.checked(move(window, 0, 0, round(1700 * first["scale"]), 800, True))
+        wide = state()
+        expected_width = round(1301 * wide["scale"]) - 2 * round(48 * wide["scale"])
+        assert wide["formatRect"][2] - wide["formatRect"][0] == expected_width, wide
+        screenshot(window, process.pid, folder / "body-wide.png")
+        gui.checked(move(window, 0, 0, 1100, 800, True))
         initial_id = first["active"]
         text = "自分の言葉で書く。\n余白のある道具。Latin 123。\n" * 500
         started = time.monotonic()

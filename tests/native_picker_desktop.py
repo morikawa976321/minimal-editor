@@ -122,7 +122,7 @@ def child(folder, desktop):
             # A parked pointer must not undo subsequent keyboard navigation.
             r, scale = before["pickerRect"], before["scale"]
             x = r[0] + round(40 * scale)
-            y = r[1] + round(52 * scale) + (before["selected"] - before["first"]) * round(48 * scale) + round(24 * scale)
+            y = r[1] + round(16 * scale) + (before["selected"] - before["first"]) * round(48 * scale) + round(24 * scale)
             point = (x & 0xffff) | ((y & 0xffff) << 16)
             send(overlay, 0x200, 0, point)
             hovered = state()

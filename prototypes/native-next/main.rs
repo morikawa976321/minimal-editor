@@ -741,7 +741,7 @@ unsafe fn shortcut(s: *mut State, key: usize, mods: usize) -> bool {
     }
 }
 unsafe fn visible_rows(s: *mut State) -> usize {
-    (((*s).picker_rect.bottom - (*s).picker_rect.top - px(s, 68)).max(px(s, 48)) / px(s, 48)).max(1)
+    (((*s).picker_rect.bottom - (*s).picker_rect.top - px(s, 32)).max(px(s, 48)) / px(s, 48)).max(1)
         as usize
 }
 unsafe fn ensure_selection(s: *mut State) {
@@ -759,7 +759,7 @@ unsafe fn invalidate_picker_row(s: *mut State, index: usize) {
         return;
     }
     let panel = (*s).picker_rect;
-    let top = panel.top + px(s, 52) + (index - (*s).first) as i32 * px(s, 48);
+    let top = panel.top + px(s, 16) + (index - (*s).first) as i32 * px(s, 48);
     let row = Rect {
         left: panel.left,
         top,
@@ -800,7 +800,8 @@ unsafe fn layout(s: *mut State) {
     GetClientRect((*s).window, &mut r);
     let w = r.right;
     let h = r.bottom;
-    let shell = w.min(px(s, 1100));
+    // Text width: 1004 -> 1205 logical pixels (+20%, rounded), plus 48 per side.
+    let shell = w.min(px(s, 1301));
     let shell_x = (w - shell) / 2;
     MoveWindow((*s).body, shell_x, 0, shell, h, 1);
     let narrow = w <= px(s, 600);
@@ -818,7 +819,7 @@ unsafe fn layout(s: *mut State) {
     let pw = px(s, 560).min((w - px(s, 48)).max(px(s, 120)));
     let max_height = (h - px(s, 180)).max(px(s, 116));
     let rows = (*s).items.len().max(1).min(1000) as i32;
-    let ph = (px(s, 68) + px(s, 48) * rows).min(max_height);
+    let ph = (px(s, 32) + px(s, 48) * rows).min(max_height);
     let x = (w - pw) / 2;
     let y = ((h - ph) / 2).max(px(s, 16));
     (*s).picker_rect = Rect {
@@ -840,7 +841,7 @@ unsafe fn layout(s: *mut State) {
         MoveWindow(
             (*s).title_edit,
             x + px(s, 32),
-            y + px(s, 52) + row * px(s, 48) + px(s, 10),
+            y + px(s, 16) + row * px(s, 48) + px(s, 10),
             pw - px(s, 64),
             px(s, 28),
             1,
@@ -968,24 +969,9 @@ unsafe fn draw_picker(s: *mut State, h: Hwnd, dc: Handle) {
     DeleteObject(bg);
     let r = (*s).picker_rect;
     rounded(dc, r, PANEL, px(s, 16));
-    if (*s).picker == Some(true) {
-        text(
-            dc,
-            Rect {
-                left: r.left + px(s, 32),
-                top: r.top + px(s, 15),
-                right: r.right - px(s, 32),
-                bottom: r.top + px(s, 36),
-            },
-            "アーカイブ",
-            0xaaaaaa,
-            (*s).small_font,
-            0x24,
-        );
-    }
     let end = ((*s).first + visible_rows(s)).min((*s).items.len());
     for index in (*s).first..end {
-        let y = r.top + px(s, 52) + (index - (*s).first) as i32 * px(s, 48);
+        let y = r.top + px(s, 16) + (index - (*s).first) as i32 * px(s, 48);
         let row = Rect {
             left: r.left + px(s, 16),
             top: y,
@@ -1177,10 +1163,10 @@ unsafe extern "system" fn overlay_proc(h: Hwnd, m: u32, w: usize, l: isize) -> i
                 let r = (*s).picker_rect;
                 if x >= r.left + px(s, 16)
                     && x < r.right - px(s, 16)
-                    && y >= r.top + px(s, 52)
+                    && y >= r.top + px(s, 16)
                     && y < r.bottom - px(s, 16)
                 {
-                    let i = (*s).first + ((y - r.top - px(s, 52)) / px(s, 48)) as usize;
+                    let i = (*s).first + ((y - r.top - px(s, 16)) / px(s, 48)) as usize;
                     if i < (*s).items.len() && i != (*s).selected {
                         move_selection(s, i);
                         snapshot(s);
@@ -1214,8 +1200,8 @@ unsafe extern "system" fn overlay_proc(h: Hwnd, m: u32, w: usize, l: isize) -> i
             if x < r.left || x >= r.right || y < r.top || y >= r.bottom {
                 return 0;
             }
-            if !(*s).renaming && y >= r.top + px(s, 52) && y < r.bottom - px(s, 16) {
-                let i = (*s).first + ((y - r.top - px(s, 52)) / px(s, 48)) as usize;
+            if !(*s).renaming && y >= r.top + px(s, 16) && y < r.bottom - px(s, 16) {
+                let i = (*s).first + ((y - r.top - px(s, 16)) / px(s, 48)) as usize;
                 if i < (*s).items.len() {
                     (*s).selected = i;
                     select_memo(s);
