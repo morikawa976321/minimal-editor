@@ -24,6 +24,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Private desktop native GUI tests failed' }
     & $python tests/native_picker_desktop.py
     if ($LASTEXITCODE -ne 0) { throw 'Native picker paint tests failed' }
+    & $python tests/native_scroll_desktop.py
+    if ($LASTEXITCODE -ne 0) { throw 'Native wheel and scrollbar tests failed' }
     & $python tests/native_async_desktop.py
     if ($LASTEXITCODE -ne 0) { throw 'Asynchronous native GUI tests failed' }
     & node tests/native_comparison_ui.mjs

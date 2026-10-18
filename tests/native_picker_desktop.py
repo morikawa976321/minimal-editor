@@ -118,6 +118,20 @@ def child(folder, desktop):
                 paint()
             before = state()
             assert before["picker"] == mode and len(before["items"]) == 40, before
+            assert not gui.visible(editor), "Modal must physically hide the body"
+            # A parked pointer must not undo subsequent keyboard navigation.
+            r, scale = before["pickerRect"], before["scale"]
+            x = r[0] + round(40 * scale)
+            y = r[1] + round(52 * scale) + (before["selected"] - before["first"]) * round(48 * scale) + round(24 * scale)
+            point = (x & 0xffff) | ((y & 0xffff) << 16)
+            send(overlay, 0x200, 0, point)
+            hovered = state()
+            key(0x28)
+            keyboard_selected = state()["selected"]
+            assert keyboard_selected != hovered["selected"], "Arrow did not move from hovered row"
+            send(overlay, 0x200, 0, point)
+            assert state()["selected"] == keyboard_selected, "Stationary pointer undid keyboard selection"
+            paint()
             picture(f"{mode}-before")
             before = state()
             gdi_before = resources(handle, 0)
@@ -172,6 +186,7 @@ def child(folder, desktop):
             picture(f"{mode}-after")
             key(0x1B)
             assert state()["picker"] is None
+            assert gui.visible(editor), "Closing modal did not restore body visibility"
 
         # Resizing may legitimately relayout. Verify clipping and ordinary
         # picker/title interactions survive both narrow and wide layouts.

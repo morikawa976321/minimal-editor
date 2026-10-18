@@ -192,6 +192,14 @@ extern "system" {
     pub fn EnableWindow(h: Hwnd, yes: i32) -> i32;
     pub fn SetFocus(h: Hwnd) -> Hwnd;
     pub fn GetFocus() -> Hwnd;
+    pub fn GetCursorPos(point: *mut Point) -> i32;
+    pub fn ScreenToClient(h: Hwnd, point: *mut Point) -> i32;
+    pub fn SystemParametersInfoW(
+        action: u32,
+        parameter: u32,
+        value: *mut c_void,
+        flags: u32,
+    ) -> i32;
     pub fn SetForegroundWindow(h: Hwnd) -> i32;
     pub fn DestroyWindow(h: Hwnd) -> i32;
     pub fn PostQuitMessage(n: i32);

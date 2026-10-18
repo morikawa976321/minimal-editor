@@ -104,6 +104,8 @@ struct State {
     items: Vec<Memo>,
     selected: usize,
     first: usize,
+    picker_mouse_position: Option<(i32, i32)>,
+    wheel_remainder: i32,
     renaming: bool,
     composing: bool,
     rename_error: Option<String>,
@@ -498,7 +500,18 @@ unsafe fn open_picker(s: *mut State, archived: bool) {
     // Child creation/showing does not guarantee the picker is above its editor
     // sibling. Clipping must follow this explicit child-window stacking order.
     SetWindowPos((*s).overlay, ptr::null_mut(), 0, 0, 0, 0, 0x53);
+    // Keep the editor out of the visible/composited window tree throughout a
+    // modal session, including its own asynchronous repaints and caret updates.
+    ShowWindow((*s).body, 0);
     ShowWindow((*s).thumb, 0);
+    (*s).thumb_visible = false;
+    let mut pointer = Point::default();
+    (*s).picker_mouse_position =
+        if GetCursorPos(&mut pointer) != 0 && ScreenToClient((*s).overlay, &mut pointer) != 0 {
+            Some((pointer.x, pointer.y))
+        } else {
+            None
+        };
     SetFocus((*s).overlay);
     snapshot(s);
 }
@@ -506,7 +519,12 @@ unsafe fn close_picker(s: *mut State) {
     cancel_rename(s);
     (*s).picker = None;
     hide_toast(s);
-    ShowWindow((*s).overlay, 0);
+    // Restore under the still-visible overlay so showing RichEdit cannot paint
+    // a partial document over the modal. Only then uncover the ready editor.
+    SetWindowPos((*s).body, 1usize as Hwnd, 0, 0, 0, 0, 0x53);
+    // RichEdit may scroll to its caret when focus returns. Restore the saved
+    // selection/viewport afterwards, otherwise Escape can jump the document.
+    SetFocus((*s).body);
     if (*s).restore_position {
         SendMessageW(
             (*s).body,
@@ -521,7 +539,8 @@ unsafe fn close_picker(s: *mut State) {
             &(*s).scroll as *const _ as isize,
         );
     }
-    SetFocus((*s).body);
+    ShowWindow((*s).overlay, 0);
+    update_thumb(s, false);
     snapshot(s);
 }
 unsafe fn switch_memo(s: *mut State, id: &str, restoring: bool) {
@@ -832,31 +851,69 @@ unsafe fn layout(s: *mut State) {
 unsafe fn scroll_geometry(s: *mut State) -> (i32, i32, i32, i32) {
     let mut pos = Point::default();
     SendMessageW((*s).body, EM_GETSCROLLPOS, 0, &mut pos as *mut _ as isize);
-    let mut info = ScrollInfo {
-        size: mem::size_of::<ScrollInfo>() as u32,
-        mask: 0x17,
-        min: 0,
-        max: 0,
-        page: 0,
-        pos: 0,
-        track: 0,
-    };
-    GetScrollInfo((*s).body, 1, &mut info);
-    let max = (info.max - info.page as i32 + 1).max(0);
+    // A hidden native scrollbar does not keep GetScrollInfo's range current.
+    // Measure the actual laid-out last display line, including soft wrapping.
+    let mut format = Rect::default();
+    SendMessageW((*s).body, 0xb2, 0, &mut format as *mut _ as isize);
+    let lines = SendMessageW((*s).body, 0xba, 0, 0).max(1);
+    let last = SendMessageW((*s).body, 0xbb, (lines - 1) as usize, 0).max(0);
+    let mut end = Point::default();
+    SendMessageW((*s).body, 0x426, &mut end as *mut _ as usize, last);
+    let page = (format.bottom - format.top).max(1);
+    let total = (end.y + pos.y - format.top + px(s, 36)).max(px(s, 36));
+    let max = (total - page).max(0);
     let mut r = Rect::default();
     GetClientRect((*s).body, &mut r);
     let track = (r.bottom - px(s, 8)).max(1);
-    let total = (info.max + 1).max(1);
-    let th = ((track as i64 * info.page as i64 / total as i64) as i32)
+    let th = ((track as i64 * page as i64 / total.max(1) as i64) as i32)
         .max(px(s, 44))
         .min(track);
     (pos.y, max, track, th)
+}
+unsafe fn scroll_wheel(s: *mut State, flags: usize) {
+    if (*s).picker.is_some() {
+        return;
+    }
+    let delta = (flags >> 16) as i16 as i32;
+    (*s).wheel_remainder += delta;
+    let notches = (*s).wheel_remainder / 120;
+    (*s).wheel_remainder %= 120;
+    if notches == 0 {
+        return;
+    }
+    let mut lines = 3u32;
+    SystemParametersInfoW(0x68, 0, &mut lines as *mut _ as *mut c_void, 0);
+    let (position, max, _, _) = scroll_geometry(s);
+    let mut format = Rect::default();
+    SendMessageW((*s).body, 0xb2, 0, &mut format as *mut _ as isize);
+    let distance = if lines == u32::MAX {
+        (format.bottom - format.top).max(1) as i64
+    } else {
+        lines as i64 * px(s, 36) as i64
+    };
+    let y = (position as i64 - notches as i64 * distance).clamp(0, max as i64) as i32;
+    SendMessageW(
+        (*s).body,
+        EM_SETSCROLLPOS,
+        0,
+        &Point { x: 0, y } as *const _ as isize,
+    );
+    update_thumb(s, true);
 }
 unsafe fn update_thumb(s: *mut State, reveal: bool) {
     if (*s).body.is_null() || (*s).thumb.is_null() {
         return;
     }
-    let (pos, max, track, th) = scroll_geometry(s);
+    let (mut pos, max, track, th) = scroll_geometry(s);
+    if pos > max {
+        pos = max;
+        SendMessageW(
+            (*s).body,
+            EM_SETSCROLLPOS,
+            0,
+            &Point { x: 0, y: pos } as *const _ as isize,
+        );
+    }
     let mut r = Rect::default();
     GetClientRect((*s).window, &mut r);
     let shell = r.right.min(px(s, 1100));
@@ -1097,6 +1154,8 @@ unsafe extern "system" fn overlay_proc(h: Hwnd, m: u32, w: usize, l: isize) -> i
         0x200 => {
             let x = l as i16 as i32;
             let y = (l >> 16) as i16 as i32;
+            let moved = (*s).picker_mouse_position != Some((x, y));
+            (*s).picker_mouse_position = Some((x, y));
             let toast = (*s).toast_rect;
             let hovered = (*s).undo_archive.is_some()
                 && x >= toast.left
@@ -1114,7 +1173,7 @@ unsafe extern "system" fn overlay_proc(h: Hwnd, m: u32, w: usize, l: isize) -> i
                 hover: 0,
             };
             TrackMouseEvent(&mut track);
-            if !(*s).renaming {
+            if moved && !(*s).renaming {
                 let r = (*s).picker_rect;
                 if x >= r.left + px(s, 16)
                     && x < r.right - px(s, 16)
@@ -1131,6 +1190,9 @@ unsafe extern "system" fn overlay_proc(h: Hwnd, m: u32, w: usize, l: isize) -> i
             0
         }
         0x2a3 => {
+            // Leave notifications can be generated by window updates without
+            // physical motion. Keep the last point so a repeated move message
+            // cannot override the user's keyboard selection on re-entry.
             (*s).toast_hover = false;
             pause_toast(s);
             0
@@ -1184,6 +1246,10 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
     }
     if (*s).test_mode && h == (*s).body && m == 0xf {
         (*s).paint_stats.body_paints += 1;
+    }
+    if h == (*s).body && m == 0x20a {
+        scroll_wheel(s, w);
+        return 0;
     }
     let original = if h == (*s).body {
         (*s).body_proc
@@ -1276,6 +1342,18 @@ unsafe extern "system" fn thumb_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isi
             SetTimer((*s).window, 3, 1500, ptr::null_mut());
             0
         }
+        0x215 => {
+            (*s).thumb_drag = None;
+            SetTimer((*s).window, 3, 1500, ptr::null_mut());
+            0
+        }
+        0x1f => {
+            if (*s).thumb_drag.take().is_some() {
+                ReleaseCapture();
+            }
+            SetTimer((*s).window, 3, 1500, ptr::null_mut());
+            0
+        }
         0x2a3 => {
             (*s).thumb_hover = false;
             SetTimer((*s).window, 3, 1500, ptr::null_mut());
@@ -1335,6 +1413,22 @@ unsafe fn snapshot(s: *mut State) {
     let mut data=format!("{{\"window\":{},\"editor\":{},\"overlay\":{},\"titleEditor\":{},\"thumb\":{},\"ready\":{},\"hidden\":{},\"visible\":{},\"active\":{},\"text\":{},\"dirty\":{},\"error\":{},\"picker\":{},\"selected\":{},\"first\":{},\"items\":[{}],\"catalog\":[{}],\"archives\":[{}],\"renaming\":{},\"titleText\":{},\"renameError\":{},\"composing\":{},\"undoArchive\":{},\"saveCount\":{},\"readyMs\":{:.3},\"scale\":{},\"charFormatSize\":{},\"paraFormatSize\":{},\"font\":{},\"fontTwips\":{},\"spacingTwips\":{},\"lineSpacingTwips\":{},\"lineRule\":{},\"formatRect\":[{},{},{},{}],\"pickerRect\":[{},{},{},{}]}}",
  (*s).window as usize,(*s).body as usize,(*s).overlay as usize,(*s).title_edit as usize,(*s).thumb as usize,(*s).ready,(*s).hidden,IsWindowVisible((*s).window)!=0,(*s).active.as_deref().map(json).unwrap_or("null".into()),json(&value),(*s).dirty,(*s).error.as_deref().map(json).unwrap_or("null".into()),(*s).picker.map(|a|if a{"\"archived\""}else{"\"normal\""}).unwrap_or("null"),(*s).selected,(*s).first,items,catalog,archives,(*s).renaming,json(&title_value),(*s).rename_error.as_deref().map(json).unwrap_or("null".into()),(*s).composing,(*s).undo_archive.as_deref().map(json).unwrap_or("null".into()),(*s).save_count,(*s).ready_ms,(*s).scale,cf.size,pf.size,json(&face),cf.height,cf.spacing,pf.line_spacing,pf.line_rule,rect.left,rect.top,rect.right,rect.bottom,(*s).picker_rect.left,(*s).picker_rect.top,(*s).picker_rect.right,(*s).picker_rect.bottom);
     data.pop();
+    let mut body_scroll = Point::default();
+    let mut body_selection = CharRange::default();
+    SendMessageW(
+        (*s).body,
+        EM_GETSCROLLPOS,
+        0,
+        &mut body_scroll as *mut _ as isize,
+    );
+    SendMessageW(
+        (*s).body,
+        EM_EXGETSEL,
+        0,
+        &mut body_selection as *mut _ as isize,
+    );
+    let (_, scroll_max, _, _) = scroll_geometry(s);
+    data.push_str(&format!(",\"bodyScroll\":[{},{}],\"bodySelection\":[{},{}],\"bodyVisible\":{},\"scrollMax\":{},\"thumbVisible\":{},\"thumbRect\":[{},{},{},{}]", body_scroll.x, body_scroll.y, body_selection.min, body_selection.max, IsWindowVisible((*s).body)!=0, scroll_max, IsWindowVisible((*s).thumb)!=0, (*s).thumb_rect.left, (*s).thumb_rect.top, (*s).thumb_rect.right, (*s).thumb_rect.bottom));
     let stats = &(*s).paint_stats;
     data.push_str(&format!(",\"bodyPaints\":{},\"bodyLayoutCalls\":{},\"bodySetRectCalls\":{},\"pickerPaints\":{},\"pickerBufferedPresents\":{},\"pickerDirectFallbacks\":{}", stats.body_paints, stats.body_layout_calls, stats.body_set_rect_calls, stats.picker_paints, stats.picker_buffered_presents, stats.picker_direct_fallbacks));
     data.push_str(&format!(
@@ -1359,6 +1453,14 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
         return DefWindowProcW(h, m, w, l);
     }
     match m {
+        0x20a => {
+            if (*s).picker.is_some() {
+                SendMessageW((*s).overlay, m, w, l);
+            } else {
+                scroll_wheel(s, w);
+            }
+            0
+        }
         5 => {
             layout(s);
             snapshot(s);
@@ -1712,6 +1814,8 @@ unsafe fn run() -> Result<(), String> {
         items: vec![],
         selected: 0,
         first: 0,
+        picker_mouse_position: None,
+        wheel_remainder: 0,
         renaming: false,
         composing: false,
         rename_error: None,
