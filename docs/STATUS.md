@@ -1,6 +1,24 @@
 # STATUS · 2026-10-18
 
-## ネイティブ比較版 · 最新
+## ネイティブ版を採用 · 最新
+
+本人がネイティブ版の採用、入力を止めない保存、日常の起動先切替、ブラウザ版保持を指示。対応完了。**Win → minimal-editor → Enter** はネイティブ版を開く。既存Start Menu項目は `scripts/app.vbs` を参照しているため外部shortcutは変更せず、repo内の起動処理を切り替えた。明示起動は `ネイティブ版.vbs`／`ブラウザ版.vbs`、比較は `ネイティブ比較.vbs`。
+
+Store全体を専用スレッドが所有し、本文保存・読込・改名・作成・保管・復元を逐次処理する。画面は完了を待たず、通常自動保存中も編集可能。処理中1件と画面内の最新本文にまとめ、古い世代の保存成功で最新本文のdirtyを消さない。切替・終了は追加入力も保存してから進める。IME終了待ちと処理中の終了要求も保持。保存失敗時は本文・未保存状態を残し、復元用コピーもworkerが保存する。
+
+採用移行済み: ブラウザ15件と比較版15件のうち14件一致、1件相違。ブラウザの現在原稿を新規IDで取り込み、元の比較版1件は本文を変更せず「（移行前の比較版）」としてアーカイブへ保持。計16件。15件の移行先本文をhash照合し、ブラウザの本文・台帳・直前版と元ネイティブ全本文のhash不変を確認。常用の現在原稿はブラウザの現在原稿に対応。両版は引き続き独立保存で、自動同期しない。
+
+退避は `data/native-adoption/2026-10-18/native-before/`、採用時ブラウザコピーは同階層 `browser-snapshot/`、検証と対応表は `verification.json`／`result.json`。完了guard `data/native-adoption/native-adoption-completed.json` により一回限りの移行を再実行しない。これらは全てGit対象外。`.work`掃除で退避を失わないようdata配下にもhash一致を確認して保存した。
+
+検証: Store＋worker 13試験、移行14試験（Storeの10件は共通）、Nodeのコピー・API・起動・移行7試験が合格。既存GUI `.work/native-next-ui-7_2dx4_g/result.json` は実 `scripts/app.vbs` から起動して同窓復帰まで確認。遅延GUI `.work/native-async-ui-tierm1br/result.json` は1秒の保存遅延中の入力・世代管理・切替待機中の追記・競合復元・IME後終了・構造操作中終了が合格。ブラウザの実起動は `.work/edge-desktop-ytdtemru/result.json` が合格。本人の画面・global input・clipboardは使用していない。
+
+最終exeは421,376 bytes、SHA-256 `ef7e508bc88327c6a2a162ecbad66092cdf77abdb259df7a7974e966f4352584`。通常起動3回の専用RAMは待機 **4.168–4.238MiB**、40編集保存後 **4.227–4.457MiB**、共有込み **29.203–29.660MiB**。生データ `.work/native-memory-knphbwl6/result.json`。専用RAMの10MB未満を維持したが、全物理メモリ・長時間・実IME中の上限保証ではない。
+
+次: 本人待ちなし。通常の起動で利用できる。再構築は `scripts/build-native.ps1`、再現試験は `scripts/test-native.ps1`。追加開発は新たな依頼があった場合のみ。
+
+以下は採用前の経緯。
+
+## ネイティブ比較版 · 採用前の記録
 
 ネイティブ版の明確な劣位をコードと照合し [native-comparison.md](native-comparison.md) へ整理した。字間等の外観調整の自由度、独自一覧のアクセシビリティ情報、スクロールバーへTabで移る操作、他OSへの移植の再利用性の4点。UIスレッドで同期保存する応答設計の弱点は、実測でブラウザより遅いという主張と分けた。IME/Handy・保存信頼性・長時間安定性の劣位は未確認。機能・起動先・原稿は変更していない。
 

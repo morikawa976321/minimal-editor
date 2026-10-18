@@ -51,7 +51,7 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
     let lastActivity=Date.now();
     const server=createNativeComparison({...config,onActivity:()=>{lastActivity=Date.now()},launch:async kind=>{
       if(kind==='native')await launchNative();
-      else await start('wscript.exe',[path.join(root,'scripts/app.vbs')]);
+      else await start('wscript.exe',[path.join(root,'scripts/browser-app.vbs')]);
     }});
     try{await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(config.port,'127.0.0.1',resolve)})}
     catch(error){

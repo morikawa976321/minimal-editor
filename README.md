@@ -1,6 +1,6 @@
 # minimal-editor
 
-2026-10-18追加: 現行のブラウザ版を保ったまま、見た目と操作を近づけたRust/Win32ネイティブ版を比較できるようにした。リポジトリ直下の **`ネイティブ比較.vbs`** をダブルクリック。ネイティブ単独は **`ネイティブ版.vbs`**。原稿は初回コピー後に独立保存する。詳細は [比較の案内](docs/native-comparison.md)、10MBの技術構成と測定は [メモリの検討](docs/native-memory-options.md)。
+2026-10-18: 本人の選択でRust/Win32/Rich Editのネイティブ版を採用。保存処理は別スレッドで行い、通常の自動保存中も入力できる。ブラウザ版は **`ブラウザ版.vbs`** で開ける。詳細は [両版の案内](docs/native-comparison.md)、[メモリの検討](docs/native-memory-options.md)。
 
 AIと独立して一人で文章を書くための、設定機能すら持たないミニマルエディターを自作するプロジェクト(本人の構想 2026-10-14)。
 
@@ -11,15 +11,18 @@ AIと独立して一人で文章を書くための、設定機能すら持たな
 ## 使い方
 
 この PC では **Win → minimal-editor → Enter**。本文が直接開き、自動で保存される。
-A（Edge app window）を本人が採用。タブやアドレスバーのない通常ウィンドウで、全画面固定のキオスクではない。
+ネイティブ版の通常ウィンドウが開く。ブラウザやNodeの常駐は不要。
 すでに開いている場合は、そのウィンドウに戻る。設定画面はない。
 
-本文は `data/web.txt`（UTF-8）、直前の保存版は `data/web.txt.bak`。Aで試した原稿をそのまま継続する。
-比較用のB/Cとその原稿は保持している。`比較を開く.cmd` は引き続き比較ページを開く。
+本文は `data/native-next/memos/<ID>.txt`（UTF-8）、一覧は `data/native-next/catalog.tsv`。バックアップ・履歴・保存失敗時の復元用コピーを保持する。終了時は最後の保存が成功してから閉じる。
+採用時にブラウザの15件を照合し、14件を維持、差がある1件を追加で取り込んだ。元の比較版の本文は「（移行前の比較版）」を付けてアーカイブに保持。移行前全体の退避は `data/native-adoption/2026-10-18/native-before/`。
+
+ブラウザ版と旧B/Cも保持している。ブラウザの本文は従来の `data/web.txt` と `data/memos/` に残り、ネイティブ版とは自動同期しない。`ネイティブ比較.vbs` で両版を開いて比べられる。旧比較ページは `比較を開く.cmd`。
 
 | V0 | 入力欄 | 本文 |
 |---|---|---|
-| A · Edge | HTML textarea、Edge app window | `data/web.txt` |
+| 採用版 · Native | Rust + Win32 Rich Edit | `data/native-next/memos/<ID>.txt` |
+| A · Edge（保持） | HTML textarea、Edge app window | `data/web.txt`、`data/memos/<ID>.txt` |
 | B · Windows | Rust + Win32 EDIT | `data/native.txt` |
 | C · Python | Python + Tk Text | `data/tk.txt` |
 
@@ -27,15 +30,14 @@ A（Edge app window）を本人が採用。タブやアドレスバーのない�
 
 ## 再構築
 
-普段の起動は、この PC の既存 Node 24、Edge、Windows PowerShellを使う。依存パッケージの追加は不要。
-Rustはネイティブ版と旧Bの再構築、PythonはGUIの自動検証と旧Cに使う。構築済みネイティブexeの実行にRustは不要。
+普段の起動はWindowsのVBSから構築済みexeを直接実行する。Rustは再構築用で、実行には不要。ブラウザ版には既存Node 24・Edge・PowerShellを使う。追加の依存パッケージはない。PythonはGUI検証と旧Cに使う。
 
 ```powershell
-node scripts/bootstrap.mjs --no-open
+powershell -ExecutionPolicy Bypass -File scripts/build-native.ps1
 powershell -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1
 ```
 
 `install-shortcut.ps1` はスタートメニューに `minimal-editor.lnk` を1個作る。旧比較用 `Minimal Editor.lnk` がこのリポジトリのものと確認できた場合だけ置き換える。
 比較版を再構築する場合は `powershell -ExecutionPolicy Bypass -File scripts/build.ps1`。比較ページは `node scripts/bootstrap.mjs --compare`。
-再現試験は `powershell -ExecutionPolicy Bypass -File scripts/test.ps1`。GUI は非表示、テスト本文は `.work` に隔離。
+ネイティブの再現試験は `powershell -ExecutionPolicy Bypass -File scripts/test-native.ps1`。ブラウザ版と旧試作の再現試験は `scripts/test.ps1`。GUI は非表示、テスト本文は `.work` に隔離。
 測定条件と限界は [検証記録](docs/verification.md)、判断は [判断ログ](docs/decisions.md) を参照。

@@ -31,7 +31,7 @@ def child(folder, expected_desktop):
     edge = Path("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe")
     assert edge.is_file(), "Existing Edge not found"
     isolated = folder / "app"
-    for relative in ("scripts/app.vbs", "scripts/launch-editor.ps1", "scripts/focus-editor.ps1",
+    for relative in ("scripts/browser-app.vbs", "scripts/launch-editor.ps1", "scripts/focus-editor.ps1",
                      "scripts/bootstrap.mjs", "scripts/server.mjs", "scripts/memo-store.mjs",
                      "scripts/upgrade-server.ps1", "prototypes/web/editor.html"):
         target = isolated / relative
@@ -103,14 +103,14 @@ def child(folder, expected_desktop):
     assert reopened["reused"] and reopened["handle"] == handle, reopened
     gui.eventually(lambda: not gui.iconic(handle), "Launcher did not restore minimized owned window")
     assert counter.read_text() == "launch\n"
-    # The actual Start Menu target runs app.vbs, which invokes the same launcher
-    # hidden. Exercise that route too without touching the real profile.
+    # The explicit browser entry point invokes the same launcher hidden.
+    # Exercise that route too without touching the real profile.
     gui.show_window(handle, 6)
     gui.eventually(lambda: gui.iconic(handle), "Owned test window did not minimize again")
-    app = spawn(["wscript.exe", str(isolated / "scripts/app.vbs")])
+    app = spawn(["wscript.exe", str(isolated / "scripts/browser-app.vbs")])
     app.wait(timeout=20)
     assert app.returncode == 0
-    gui.eventually(lambda: not gui.iconic(handle), "app.vbs did not restore owned window")
+    gui.eventually(lambda: not gui.iconic(handle), "browser-app.vbs did not restore owned window")
     assert probe()["handle"] == handle
     assert not any(window["class"] == "#32770" for window in gui.windows()), "Unexpected launch error dialog"
     assert (isolated / "data/web.txt").read_text(encoding="utf-8") == "isolated draft"
@@ -118,7 +118,7 @@ def child(folder, expected_desktop):
     return {"passed": True, "desktop": desktop_name.value,
             "concurrent_launches_created_one_window": True, "reopen_restored_same_window": True,
             "unrelated_profile_and_title_ignored": True, "probe_did_not_restore_window": True,
-            "actual_bootstrap_started_server": True, "app_vbs_restored_same_window": True}
+            "actual_bootstrap_started_server": True, "browser_app_vbs_restored_same_window": True}
 
 
 def parent():

@@ -4,6 +4,7 @@
 #![allow(non_snake_case)]
 mod store;
 mod win;
+mod worker;
 use std::{
     ffi::c_void,
     fs,
@@ -16,6 +17,7 @@ use std::{
 };
 use store::{Memo, Store};
 use win::*;
+use worker::{Action, Request, View, Worker};
 
 const BG: u32 = 0x202020;
 const FG: u32 = 0xdfdfdf;
@@ -54,8 +56,22 @@ fn err() -> String {
     std::io::Error::last_os_error().to_string()
 }
 
+enum PendingAction {
+    Storage(Action),
+    Close,
+}
 struct State {
-    store: Store,
+    worker: Worker,
+    view: View,
+    inflight: bool,
+    saving: bool,
+    action_inflight: bool,
+    close_after_action: bool,
+    pending_action: Option<PendingAction>,
+    worker_failed: bool,
+    generation: u64,
+    saved_generation: u64,
+    last_save_ms: f64,
     window: Hwnd,
     body: Hwnd,
     overlay: Hwnd,
@@ -99,7 +115,6 @@ struct State {
     ready_ms: f64,
     save_count: u64,
     recovery: Option<PathBuf>,
-    recovery_hash: Option<u64>,
     paragraph_applied: bool,
 }
 static mut STATE: *mut State = ptr::null_mut();
@@ -134,12 +149,14 @@ unsafe fn fail(s: *mut State, message: String) {
     update_caption(s);
     snapshot(s);
 }
+// Only the worker touches memo files after startup. The UI owns the latest
+// buffer, and queues at most one request; edits during I/O stay in RichEdit.
 unsafe fn save(s: *mut State) -> bool {
+    if (*s).inflight || (*s).composing || (*s).worker_failed {
+        return false;
+    }
     if !(*s).dirty {
         return true;
-    }
-    if (*s).composing {
-        return false;
     }
     let Some(id) = (*s).active.clone() else {
         return true;
@@ -151,52 +168,186 @@ unsafe fn save(s: *mut State) -> bool {
             return false;
         }
     };
-    match (*s).store.save(&id, &text) {
+    let request = Request::Save {
+        id,
+        text,
+        generation: (*s).generation,
+    };
+    match (*s).worker.send(request) {
         Ok(()) => {
-            (*s).dirty = false;
-            (*s).error = None;
-            (*s).save_count += 1;
-            (*s).recovery_hash = None;
-            update_caption(s);
-            true
+            (*s).inflight = true;
+            (*s).saving = true;
+            SetTimer((*s).window, 5, 15, ptr::null_mut());
         }
-        Err(e) => {
-            let mut hash = std::collections::hash_map::DefaultHasher::new();
-            id.hash(&mut hash);
-            text.hash(&mut hash);
-            let fingerprint = hash.finish();
-            if (*s).recovery_hash != Some(fingerprint) {
-                match (*s).store.recover(&id, &text) {
-                    Ok(path) => {
-                        (*s).recovery = Some(path);
-                        (*s).recovery_hash = Some(fingerprint);
-                    }
-                    Err(recovery_error) => {
-                        fail(
-                            s,
-                            format!("{e}\n復元用コピーも保存できません: {recovery_error}"),
-                        );
-                        return false;
-                    }
+        Err(e) => storage_disconnected(s, e),
+    }
+    false
+}
+unsafe fn storage_disconnected(s: *mut State, error: String) {
+    KillTimer((*s).window, 5);
+    (*s).worker_failed = true;
+    (*s).inflight = false;
+    (*s).saving = false;
+    (*s).action_inflight = false;
+    (*s).close_after_action = false;
+    (*s).pending_action = None;
+    SendMessageW((*s).body, 0xcf, usize::from((*s).active.is_none()), 0);
+    EnableWindow((*s).title_edit, 1);
+    fail(s, error);
+}
+unsafe fn busy(s: *mut State) -> bool {
+    (*s).pending_action.is_some() || (*s).action_inflight
+}
+unsafe fn request_action(s: *mut State, action: PendingAction) {
+    if matches!(action, PendingAction::Close) {
+        if (*s).action_inflight {
+            (*s).close_after_action = true;
+            return;
+        }
+        // Closing supersedes a not-yet-started switch/new request, while the
+        // current document still goes through its final save barrier.
+        (*s).pending_action = None;
+    }
+    if busy(s) || (*s).worker_failed {
+        return;
+    }
+    (*s).pending_action = Some(action);
+    SetTimer((*s).window, 5, 15, ptr::null_mut());
+    continue_action(s);
+    snapshot(s);
+}
+unsafe fn continue_action(s: *mut State) {
+    if (*s).pending_action.is_none() || !save(s) {
+        return;
+    }
+    match (*s).pending_action.take().unwrap() {
+        PendingAction::Close => {
+            DestroyWindow((*s).window);
+        }
+        PendingAction::Storage(action) => {
+            match (*s).worker.send(Request::Action(action)) {
+                Ok(()) => {
+                    (*s).inflight = true;
+                    (*s).action_inflight = true;
+                    SetTimer((*s).window, 5, 15, ptr::null_mut());
+                    // A document replacement cannot race new edits. Normal
+                    // autosave never makes the editor read-only.
+                    SendMessageW((*s).body, 0xcf, 1, 0);
+                    EnableWindow((*s).title_edit, 0);
                 }
+                Err(e) => storage_disconnected(s, e),
             }
-            let note = (*s)
-                .recovery
-                .as_ref()
-                .map(|p| format!("\n復元用コピー: {}", p.display()))
-                .unwrap_or_default();
-            fail(s, format!("{e}{note}"));
-            false
         }
     }
 }
-unsafe fn load_current(s: *mut State) -> Result<(), String> {
-    let id = (*s).store.active();
-    let text = match id.as_deref() {
-        Some(id) => (*s).store.text(id)?,
-        None => String::new(),
+unsafe fn poll_storage(s: *mut State) {
+    if (*s).worker_failed {
+        return;
+    }
+    let reply = match (*s).worker.poll() {
+        Ok(Some(reply)) => reply,
+        Ok(None) => return,
+        Err(e) => {
+            storage_disconnected(s, e);
+            return;
+        }
     };
-    load_text(s, id, &text)
+    (*s).inflight = false;
+    (*s).saving = false;
+    (*s).view = reply.view;
+    match reply.request {
+        Request::Save { id, generation, .. } => {
+            (*s).last_save_ms = reply.save_ms;
+            if let Some(error) = reply.error {
+                (*s).close_after_action = false;
+                (*s).dirty = true;
+                (*s).pending_action = None;
+                (*s).recovery = reply.recovery;
+                let note = (*s)
+                    .recovery
+                    .as_ref()
+                    .map(|p| format!("\n復元用コピー: {}", p.display()))
+                    .unwrap_or_default();
+                fail(s, format!("{error}{note}"));
+                // Preserve a newer buffer too, rather than only recovering the
+                // older text that happened to be in flight when the error hit.
+                if (*s).active.as_deref() == Some(&id) && (*s).generation > generation {
+                    save(s);
+                }
+            } else {
+                (*s).save_count += 1;
+                (*s).saved_generation = generation;
+                if (*s).active.as_deref() == Some(&id) && (*s).generation == generation {
+                    (*s).dirty = false;
+                    (*s).error = None;
+                    (*s).recovery = None;
+                }
+                update_caption(s);
+                if (*s).picker.is_some() && !(*s).renaming {
+                    let preferred = (&(*s).items).get((*s).selected).map(|m| m.id.clone());
+                    reload_items(s, preferred.as_deref());
+                }
+                if (*s).dirty {
+                    save(s);
+                }
+                continue_action(s);
+            }
+        }
+        Request::Action(action) => {
+            (*s).action_inflight = false;
+            SendMessageW((*s).body, 0xcf, usize::from((*s).active.is_none()), 0);
+            EnableWindow((*s).title_edit, 1);
+            if let Some(error) = reply.error {
+                (*s).close_after_action = false;
+                if matches!(action, Action::Rename { .. }) {
+                    (*s).rename_error = Some(error);
+                    InvalidateRect((*s).overlay, ptr::null(), 0);
+                    SetFocus((*s).title_edit);
+                } else {
+                    fail(s, error);
+                }
+            } else {
+                if let Some((id, text)) = reply.document {
+                    if let Err(error) = load_text(s, id, &text) {
+                        fail(s, error);
+                        snapshot(s);
+                        return;
+                    }
+                }
+                (*s).error = None;
+                match action {
+                    Action::Create | Action::Switch { .. } => close_picker(s),
+                    Action::Archive { id } => {
+                        (*s).undo_archive = Some(id);
+                        (*s).toast_deadline = Some(Instant::now() + Duration::from_secs(8));
+                        SetTimer((*s).window, 2, 100, ptr::null_mut());
+                        reload_items(s, None);
+                        SetFocus((*s).overlay);
+                    }
+                    Action::Restore { id } => {
+                        (*s).picker = Some(false);
+                        hide_toast(s);
+                        reload_items(s, Some(&id));
+                        SetFocus((*s).overlay);
+                    }
+                    Action::Rename { id, .. } => {
+                        cancel_rename(s);
+                        reload_items(s, Some(&id));
+                        SetFocus((*s).overlay);
+                    }
+                }
+                update_caption(s);
+                if (*s).close_after_action {
+                    (*s).close_after_action = false;
+                    request_action(s, PendingAction::Close);
+                }
+            }
+        }
+    }
+    if !(*s).inflight && (*s).pending_action.is_none() {
+        KillTimer((*s).window, 5);
+    }
+    snapshot(s);
 }
 unsafe fn load_text(s: *mut State, id: Option<String>, text: &str) -> Result<(), String> {
     // Read the complete target before this function. WM_SETTEXT is reversible if
@@ -278,7 +429,11 @@ unsafe fn set_literal_text(h: Hwnd, value: &str) -> bool {
     stream_error == 0 && input.position == input.units.len() * 2
 }
 unsafe fn reload_items(s: *mut State, preferred: Option<&str>) {
-    (*s).items = (*s).store.list((*s).picker == Some(true));
+    (*s).items = if (*s).picker == Some(true) {
+        (*s).view.archived.clone()
+    } else {
+        (*s).view.normal.clone()
+    };
     if let Some(index) = preferred.and_then(|id| (*s).items.iter().position(|m| m.id == id)) {
         (*s).selected = index
     } else {
@@ -362,46 +517,16 @@ unsafe fn switch_memo(s: *mut State, id: &str, restoring: bool) {
         close_picker(s);
         return;
     }
-    if !save(s) {
-        return;
-    }
-    let text = match (*s).store.text(id) {
-        Ok(t) => t,
-        Err(e) => {
-            fail(s, e);
-            return;
-        }
-    };
-    let result = if restoring {
-        (*s).store
-            .archive(id, false)
-            .and_then(|_| (*s).store.activate(id))
-    } else {
-        (*s).store.activate(id)
-    };
-    if let Err(e) = result {
-        fail(s, e);
-        return;
-    }
-    if let Err(e) = load_text(s, Some(id.into()), &text) {
-        fail(s, e);
-        return;
-    }
-    close_picker(s);
+    request_action(
+        s,
+        PendingAction::Storage(Action::Switch {
+            id: id.into(),
+            restoring,
+        }),
+    );
 }
 unsafe fn create_memo(s: *mut State) {
-    if !save(s) {
-        return;
-    }
-    let result = (*s).store.create().and_then(|id| {
-        let text = (*s).store.text(&id)?;
-        load_text(s, Some(id), &text)
-    });
-    match result {
-        Ok(()) => close_picker(s),
-        Err(e) => fail(s, e),
-    }
-    snapshot(s);
+    request_action(s, PendingAction::Storage(Action::Create));
 }
 unsafe fn select_memo(s: *mut State) {
     if let Some(item) = (&(*s).items).get((*s).selected).cloned() {
@@ -409,51 +534,17 @@ unsafe fn select_memo(s: *mut State) {
     }
 }
 unsafe fn archive_selected(s: *mut State) {
-    if (*s).picker != Some(false) || (*s).renaming || !save(s) {
+    if (*s).picker != Some(false) || (*s).renaming {
         return;
     }
-    let Some(item) = (&(*s).items).get((*s).selected).cloned() else {
-        return;
-    };
-    if let Err(e) = (*s).store.archive(&item.id, true) {
-        fail(s, e);
-        return;
+    if let Some(item) = (&(*s).items).get((*s).selected).cloned() {
+        request_action(s, PendingAction::Storage(Action::Archive { id: item.id }));
     }
-    if (*s).active.as_deref() == Some(item.id.as_str()) {
-        if let Err(e) = load_current(s) {
-            fail(s, e);
-            return;
-        }
-    }
-    (*s).undo_archive = Some(item.id);
-    (*s).toast_deadline = Some(Instant::now() + Duration::from_secs(8));
-    SetTimer((*s).window, 2, 100, ptr::null_mut());
-    reload_items(s, None);
-    SetFocus((*s).overlay);
-    snapshot(s);
 }
 unsafe fn undo_archive(s: *mut State) {
-    let Some(id) = (*s).undo_archive.clone() else {
-        return;
-    };
-    if !save(s) {
-        return;
+    if let Some(id) = (*s).undo_archive.clone() {
+        request_action(s, PendingAction::Storage(Action::Restore { id }));
     }
-    if let Err(e) = (*s).store.archive(&id, false) {
-        fail(s, e);
-        return;
-    }
-    if (*s).store.active() != (*s).active {
-        if let Err(e) = load_current(s) {
-            fail(s, e);
-            return;
-        }
-    }
-    (*s).picker = Some(false);
-    hide_toast(s);
-    reload_items(s, Some(&id));
-    SetFocus((*s).overlay);
-    snapshot(s);
 }
 unsafe fn begin_rename(s: *mut State) {
     if (*s).picker != Some(false) || (*s).renaming {
@@ -494,29 +585,23 @@ unsafe fn confirm_rename(s: *mut State) {
             return;
         }
     };
-    let result =
-        if title.is_empty() || title.chars().count() > 200 || title.chars().any(|c| c.is_control())
-        {
-            Err("タイトルを1〜200文字で入力してください".into())
-        } else {
-            (*s).store.rename(&item.id, &title)
-        };
-    match result {
-        Ok(()) => {
-            cancel_rename(s);
-            reload_items(s, Some(&item.id));
-            SetFocus((*s).overlay);
-        }
-        Err(e) => {
-            (*s).rename_error = Some(e);
-            InvalidateRect((*s).overlay, ptr::null(), 0);
-        }
+    if title.is_empty() || title.chars().count() > 200 || title.chars().any(|c| c.is_control()) {
+        (*s).rename_error = Some("タイトルを1〜200文字で入力してください".into());
+        InvalidateRect((*s).overlay, ptr::null(), 0);
+    } else {
+        request_action(
+            s,
+            PendingAction::Storage(Action::Rename { id: item.id, title }),
+        );
     }
     snapshot(s);
 }
 unsafe fn shortcut(s: *mut State, key: usize, mods: usize) -> bool {
     if (*s).composing || key == 0xe5 {
         return false;
+    }
+    if busy(s) {
+        return (*s).picker.is_some() || (mods & 1 != 0 && [0x4e, 0x50, 0x4d].contains(&key));
     }
     let ctrl = mods & 1 != 0;
     let shift = mods & 2 != 0;
@@ -901,6 +986,9 @@ unsafe extern "system" fn overlay_proc(h: Hwnd, m: u32, w: usize, l: isize) -> i
     if s.is_null() {
         return DefWindowProcW(h, m, w, l);
     }
+    if busy(s) && [0x200, 0x201, 0x20a].contains(&m) {
+        return 0;
+    }
     match m {
         0xf => {
             paint_picker(s, h);
@@ -1126,15 +1214,15 @@ unsafe fn snapshot(s: *mut State) {
         .collect::<Vec<_>>()
         .join(",");
     let catalog = (*s)
-        .store
-        .list(false)
+        .view
+        .normal
         .iter()
         .map(|m| format!("{{\"id\":{},\"title\":{}}}", json(&m.id), json(&m.title)))
         .collect::<Vec<_>>()
         .join(",");
     let archives = (*s)
-        .store
-        .list(true)
+        .view
+        .archived
         .iter()
         .map(|m| format!("{{\"id\":{},\"title\":{}}}", json(&m.id), json(&m.title)))
         .collect::<Vec<_>>()
@@ -1152,6 +1240,14 @@ unsafe fn snapshot(s: *mut State) {
     let mut data=format!("{{\"window\":{},\"editor\":{},\"overlay\":{},\"titleEditor\":{},\"thumb\":{},\"ready\":{},\"hidden\":{},\"visible\":{},\"active\":{},\"text\":{},\"dirty\":{},\"error\":{},\"picker\":{},\"selected\":{},\"first\":{},\"items\":[{}],\"catalog\":[{}],\"archives\":[{}],\"renaming\":{},\"titleText\":{},\"renameError\":{},\"composing\":{},\"undoArchive\":{},\"saveCount\":{},\"readyMs\":{:.3},\"scale\":{},\"charFormatSize\":{},\"paraFormatSize\":{},\"font\":{},\"fontTwips\":{},\"spacingTwips\":{},\"lineSpacingTwips\":{},\"lineRule\":{},\"formatRect\":[{},{},{},{}],\"pickerRect\":[{},{},{},{}]}}",
  (*s).window as usize,(*s).body as usize,(*s).overlay as usize,(*s).title_edit as usize,(*s).thumb as usize,(*s).ready,(*s).hidden,IsWindowVisible((*s).window)!=0,(*s).active.as_deref().map(json).unwrap_or("null".into()),json(&value),(*s).dirty,(*s).error.as_deref().map(json).unwrap_or("null".into()),(*s).picker.map(|a|if a{"\"archived\""}else{"\"normal\""}).unwrap_or("null"),(*s).selected,(*s).first,items,catalog,archives,(*s).renaming,json(&title_value),(*s).rename_error.as_deref().map(json).unwrap_or("null".into()),(*s).composing,(*s).undo_archive.as_deref().map(json).unwrap_or("null".into()),(*s).save_count,(*s).ready_ms,(*s).scale,cf.size,pf.size,json(&face),cf.height,cf.spacing,pf.line_spacing,pf.line_rule,rect.left,rect.top,rect.right,rect.bottom,(*s).picker_rect.left,(*s).picker_rect.top,(*s).picker_rect.right,(*s).picker_rect.bottom);
     data.pop();
+    data.push_str(&format!(
+        ",\"saving\":{},\"busy\":{},\"generation\":{},\"savedGeneration\":{},\"lastSaveMs\":{}",
+        (*s).saving,
+        busy(s),
+        (*s).generation,
+        (*s).saved_generation,
+        (*s).last_save_ms
+    ));
     data.push_str(&format!(",\"toastFocused\":{},\"toastHovered\":{},\"textMode\":{},\"recovery\":{},\"paragraphApplied\":{}}}",(*s).toast_focus,(*s).toast_hover,SendMessageW((*s).body,0x45a,0,0),(*s).recovery.as_ref().map(|p|json(&p.to_string_lossy())).unwrap_or("null".into()),(*s).paragraph_applied));
     // Reports are optional test instrumentation, never a second copy of drafts in
     // normal use. Write replacement so readers do not observe half JSON.
@@ -1186,6 +1282,7 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
         0x111 if (w >> 16) & 0xffff == 0x300 => {
             if l as Hwnd == (*s).body && !(*s).loading && (*s).ready {
                 (*s).dirty = true;
+                (*s).generation += 1;
                 if !(*s).composing {
                     save(s);
                 }
@@ -1212,6 +1309,12 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
                         (*s).thumb_visible = false;
                         ShowWindow((*s).thumb, 0);
                         KillTimer(h, 3);
+                    }
+                }
+                5 => {
+                    poll_storage(s);
+                    if !(*s).inflight && !(*s).dirty {
+                        continue_action(s);
                     }
                 }
                 4 => {
@@ -1267,23 +1370,7 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
             1
         }
         0x10 => {
-            if !save(s) {
-                snapshot(s);
-                if !(*s).hidden {
-                    MessageBoxW(
-                        h,
-                        wide(&format!(
-                            "保存できません。本文は画面に残しています。\n\n{}",
-                            (*s).error.as_deref().unwrap_or("")
-                        ))
-                        .as_ptr(),
-                        wide("未保存").as_ptr(),
-                        0x10,
-                    );
-                }
-                return 0;
-            }
-            DestroyWindow(h);
+            request_action(s, PendingAction::Close);
             0
         }
         2 => {
@@ -1404,6 +1491,15 @@ unsafe fn run() -> Result<(), String> {
     if test_mode && explicit.is_none() {
         return Err("Test and probe modes require an isolated --data-dir".into());
     }
+    let save_delay = match value("--test-save-delay-ms")? {
+        Some(raw) if test_mode => Duration::from_millis(
+            raw.parse::<u64>()
+                .map_err(|_| "Invalid save delay")?
+                .min(5000),
+        ),
+        Some(_) => return Err("Save delay requires --test-mode and an isolated --data-dir".into()),
+        None => Duration::ZERO,
+    };
     let mut startup: StartupInfo = mem::zeroed();
     startup.size = mem::size_of::<StartupInfo>() as u32;
     GetStartupInfoW(&mut startup);
@@ -1477,8 +1573,25 @@ unsafe fn run() -> Result<(), String> {
             return Err(err());
         }
     }
+    let view = View::read(&store);
+    let initial_id = view.active.clone();
+    let initial_text = match initial_id.as_deref() {
+        Some(id) => store.text(id)?,
+        None => String::new(),
+    };
+    let worker = Worker::start(store, save_delay)?;
     let s = Box::into_raw(Box::new(State {
-        store,
+        worker,
+        view,
+        inflight: false,
+        saving: false,
+        action_inflight: false,
+        close_after_action: false,
+        pending_action: None,
+        worker_failed: false,
+        generation: 0,
+        saved_generation: 0,
+        last_save_ms: 0.0,
         window: ptr::null_mut(),
         body: ptr::null_mut(),
         overlay: ptr::null_mut(),
@@ -1522,7 +1635,6 @@ unsafe fn run() -> Result<(), String> {
         ready_ms: 0.0,
         save_count: 0,
         recovery: None,
-        recovery_hash: None,
         paragraph_applied: false,
     }));
     STATE = s;
@@ -1653,7 +1765,7 @@ unsafe fn run() -> Result<(), String> {
         -4,
         rich_proc as *const () as isize,
     ));
-    load_current(s)?;
+    load_text(s, initial_id, &initial_text)?;
     (*s).ready = true;
     layout(s);
     (*s).ready_ms = started.elapsed().as_secs_f64() * 1000.0;

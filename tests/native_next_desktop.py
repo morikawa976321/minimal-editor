@@ -52,9 +52,18 @@ def child(folder, desktop):
                     return None
         return gui.eventually(ready, "Native not ready")
 
-    def state():
+    def raw_state():
         send(window, 0x8002, 0, 0)
         return json.loads(report.read_text(encoding="utf-8"))
+
+    def state():
+        # Saving and structural operations run on the worker. A UI snapshot
+        # must never itself flush I/O; existing assertions need settled state.
+        def settled():
+            value = raw_state()
+            return value if (not value.get("saving") and not value.get("busy")
+                             and (not value["dirty"] or value["error"])) else None
+        return gui.eventually(settled, "Native did not finish pending persistence")
 
     def key(vk, mods=0):
         send(window, 0x8001, vk, mods)
@@ -206,13 +215,13 @@ def child(folder, desktop):
         # Exercise the real Node launcher with isolated data. Its GUI child
         # must remain visible despite the launch helper's hidden console.
         launch_app = folder / "launcher-app"
-        for relative in ("ネイティブ版.vbs", "scripts/launch-native.mjs", "scripts/seed-native.mjs", "build/native-next.exe"):
+        for relative in ("ネイティブ版.vbs", "scripts/app.vbs", "scripts/native-app.vbs", "scripts/launch-native.mjs", "scripts/seed-native.mjs", "build/native-next.exe"):
             target = launch_app / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(gui.ROOT / relative, target)
         shutil.copytree(source, launch_app / "data")
         def launcher():
-            subprocess.run(["wscript.exe", str(launch_app / "ネイティブ版.vbs")], check=True, capture_output=True,
+            subprocess.run(["wscript.exe", str(launch_app / "scripts/app.vbs")], check=True, capture_output=True,
                            creationflags=subprocess.CREATE_NO_WINDOW, timeout=10)
         def launched_windows():
             return [w for w in gui.windows() if w["class"].startswith("MinimalEditorNext-")]
