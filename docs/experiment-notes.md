@@ -65,3 +65,7 @@
 - 同日: 保存遅延を1秒注入して入力・snapshotが先に返ることを確認し、旧同期試験の「入力直後は保存済み」という仮定をsettle待ちへ修正。メモリ測定の入力受付と最新ファイル確認の時間も分離した。
 - 同日: 既存shortcutの参照先を読むことでrepo内app.vbsだけで日常起動を切替。sandbox内のloopback/CScript制限で試験が拒否された分は、専用desktop・隔離データの同じ試験をsandbox外で実行して合格した。
 - 同日: 原稿1件の相違にseed baselineが無いことを確認し、片方の編集と推測せず両本文を保持して移行。15件のmappingとbrowser/元native本文hashを照合し、退避・完了guardを一時workだけに置かずdata配下にも保存した。
+- 同日: モーダルのちらつきは単発PrintWindowでは途中露出を隠すため、baselineの本文paint/layout回数と被覆DCの可視clipを測った。100移動で本文100再描画を再現し、修正後0を確認した。
+- 同日: WS_CLIPSIBLINGSだけを足した初回修正では、一覧が兄弟Z順で本文の下にあったため描画領域が空になった。実buffer転送0の試験失敗を根拠にSetWindowPosの明示Z順を追加し、clip・転送・PNGを再確認した。
+- 同日: GDI個数の初回増減を即リークとせず、同一操作の追加100回で継続増加を確認した。一時bufferの解放と最大化時の一時ピークを区別し、既存の10MB目標を保証へ拡張しなかった。
+- 同日: 本人のexeが実行中で上書きできず、試験コピーでrename更新・compile失敗・publish失敗rollback・旧process応答を確認してから配布した。本人の窓は閉じず、次回通常起動で反映する。

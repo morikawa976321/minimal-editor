@@ -513,3 +513,25 @@ astra の判断: 片方の一覧からもう片方のショートカットで直
 ## 本人待ち
 
 なし。日常のWin→minimal-editor→Enterでネイティブ版を利用できる。ブラウザ版は根の `ブラウザ版.vbs` から開ける。採用判断の再質問や比較結果貼付は不要。
+
+## 2026-10-18 · 中央／アーカイブモーダルのちらつきを修正
+
+本人の原文:
+
+> 中央モーダルやアーカイブモーダルで上下カーソル移動をしていると画面がチカチカしたりメモの内容が一瞬画面に表示されるバグがある修正を行ってください
+
+**再現**: 上下からlayout()を毎回呼び、MoveWindow(TRUE)で本文を即時再描画し、EM_SETRECTでも本文の描画領域を設定していた。旧コードへテスト用カウンタだけを加えたbaselineで、各モーダル100移動につき本文paint/layout/領域設定が各100増加した。一覧と本文は重なる兄弟なのにWS_CLIPSIBLINGSがなく、GetDCで一覧の背後の本文領域も可視だった。baseline `.work/native-picker-ui-ewmhr5qx/result.json`。
+
+**astra の判断**: 選択移動と配置を分離する。上下・hoverは旧/新行のみ、スクロール境界では一覧領域を無効化し、本文には触れない。本文・一覧・スクロールバーに兄弟クリッピングを付け、一覧とバーの表示はSetWindowPos(HWND_TOP,NOACTIVATE等)で明示する。クリッピングだけの初回修正では一覧が本文より下にあるためrcPaintが空になることを試験で発見し、Z順を合わせて修正した。
+
+**描画**: WM_PAINTはBeginPaintの更新領域に対応する一時bitmap/DCへ描いてからBitBlt一回で画面へ出す。タイトル編集子の領域は元のBeginPaint DCのclipで保護。GDI失敗は戻り値で判定し、成功した転送だけを計数。都度解放して待機時に画像を保持しない。全画面サイズの永続bufferやWS_EX_COMPOSITEDによる一律の二重描画は採らず、通常の行移動の一時領域を小さくする。全画面再描画の一時ピークまで10MB以内とは主張しない。
+
+**更新**: 本人のエディターが起動中のためexe上書きが失敗。強制終了・キー送出・前面化は行わず、コピーアプリで実行中exeのrename可否と更新scriptのrollbackを確認してから、実exeを固有退避名へ移し新版を配置した。旧ウィンドウは旧コードで動き続けるため、通常終了後の次回起動で反映する。既存のデータ排他と同窓再利用は維持する。
+
+**検証**: 親が新版canonical exeで通常・保管各100移動の本文3カウンタ増加0、実buffer転送、fallback0、本文DC clip空（強制再描画後も）、追加100移動時GDI増加0、40件のスクロール境界、460/1100幅、改名と一覧切替を確認。`.work/native-picker-ui-lruqntcm/result.json`。既存GUI `.work/native-next-ui-f_ujnq5g/result.json` が保存・Undo・作成・改名・保管取消復元・実app.vbs起動まで合格。親がPNGを目視。単発PrintWindowだけをちらつき改善の証拠にせず、元の描画経路が動かないことを検証した。
+
+**根拠資料**: [MoveWindow(TRUE)の即時UpdateWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-movewindow)、[兄弟ウィンドウの描画クリップ](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-styles)。メモ本文・保存先・ブラウザ版には変更なし。
+
+## 本人待ち
+
+判断の追加要求なし。現在の窓を普通に閉じ、Win→minimal-editor→Enterで新版を開く。本人の窓をAI側で閉じることはしない。

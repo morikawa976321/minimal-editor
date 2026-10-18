@@ -2,6 +2,7 @@
 import ctypes as C
 from ctypes import wintypes as W
 import json
+import os
 import shutil
 from pathlib import Path
 import subprocess
@@ -17,7 +18,7 @@ send = gui.bind(gui.U, "SendMessageW", C.c_ssize_t, [W.HWND, W.UINT, W.WPARAM, W
 
 def child(folder, desktop):
     verify_desktop(desktop)
-    exe = gui.ROOT / "build/native-next.exe"
+    exe = Path(os.environ.get("MINIMAL_EDITOR_NATIVE_EXE", str(gui.ROOT / "build/native-next.exe")))
     assert exe.is_file()
     data, report = folder / "data", folder / "state.json"
     process = None
@@ -218,7 +219,7 @@ def child(folder, desktop):
         for relative in ("ネイティブ版.vbs", "scripts/app.vbs", "scripts/native-app.vbs", "scripts/launch-native.mjs", "scripts/seed-native.mjs", "build/native-next.exe"):
             target = launch_app / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(gui.ROOT / relative, target)
+            shutil.copyfile(exe if relative == "build/native-next.exe" else gui.ROOT / relative, target)
         shutil.copytree(source, launch_app / "data")
         def launcher():
             subprocess.run(["wscript.exe", str(launch_app / "scripts/app.vbs")], check=True, capture_output=True,

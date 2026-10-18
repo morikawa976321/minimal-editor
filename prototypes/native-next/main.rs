@@ -60,7 +60,17 @@ enum PendingAction {
     Storage(Action),
     Close,
 }
+#[derive(Default)]
+struct PaintStats {
+    body_paints: u64,
+    body_layout_calls: u64,
+    body_set_rect_calls: u64,
+    picker_paints: u64,
+    picker_buffered_presents: u64,
+    picker_direct_fallbacks: u64,
+}
 struct State {
+    paint_stats: PaintStats,
     worker: Worker,
     view: View,
     inflight: bool,
@@ -485,7 +495,9 @@ unsafe fn open_picker(s: *mut State, archived: bool) {
     hide_toast(s);
     let active = (*s).active.clone();
     reload_items(s, active.as_deref());
-    ShowWindow((*s).overlay, 5);
+    // Child creation/showing does not guarantee the picker is above its editor
+    // sibling. Clipping must follow this explicit child-window stacking order.
+    SetWindowPos((*s).overlay, ptr::null_mut(), 0, 0, 0, 0, 0x53);
     ShowWindow((*s).thumb, 0);
     SetFocus((*s).overlay);
     snapshot(s);
@@ -673,22 +685,15 @@ unsafe fn shortcut(s: *mut State, key: usize, mods: usize) -> bool {
         }
         match key {
             0x26 => {
-                (*s).toast_focus = false;
-                pause_toast(s);
-                (*s).selected = (*s).selected.saturating_sub(1);
-                ensure_selection(s);
-                layout(s);
-                InvalidateRect((*s).overlay, ptr::null(), 0);
+                move_selection(s, (*s).selected.saturating_sub(1));
                 snapshot(s);
                 true
             }
             0x28 => {
-                (*s).toast_focus = false;
-                pause_toast(s);
-                (*s).selected = ((*s).selected + 1).min((*s).items.len().saturating_sub(1));
-                ensure_selection(s);
-                layout(s);
-                InvalidateRect((*s).overlay, ptr::null(), 0);
+                move_selection(
+                    s,
+                    ((*s).selected + 1).min((*s).items.len().saturating_sub(1)),
+                );
                 snapshot(s);
                 true
             }
@@ -730,9 +735,47 @@ unsafe fn ensure_selection(s: *mut State) {
         (*s).first = (*s).selected + 1 - rows
     }
 }
+unsafe fn invalidate_picker_row(s: *mut State, index: usize) {
+    if index < (*s).first || index >= (*s).first + visible_rows(s) {
+        return;
+    }
+    let panel = (*s).picker_rect;
+    let top = panel.top + px(s, 52) + (index - (*s).first) as i32 * px(s, 48);
+    let row = Rect {
+        left: panel.left,
+        top,
+        right: panel.right,
+        bottom: top + px(s, 48),
+    };
+    InvalidateRect((*s).overlay, &row, 0);
+}
+unsafe fn move_selection(s: *mut State, index: usize) {
+    let previous = (*s).selected;
+    let first = (*s).first;
+    let toast_focused = (*s).toast_focus;
+    (*s).toast_focus = false;
+    pause_toast(s);
+    (*s).selected = index;
+    ensure_selection(s);
+    // Selection changes no window geometry. In particular, never reformat or
+    // repaint the overlapping RichEdit while navigating the picker.
+    if first != (*s).first {
+        InvalidateRect((*s).overlay, &(*s).picker_rect, 0);
+    } else if previous != index {
+        invalidate_picker_row(s, previous);
+        invalidate_picker_row(s, index);
+    }
+    if toast_focused {
+        InvalidateRect((*s).overlay, &(*s).toast_rect, 0);
+    }
+}
 unsafe fn layout(s: *mut State) {
     if (*s).window.is_null() || (*s).body.is_null() {
         return;
+    }
+    if (*s).test_mode {
+        (*s).paint_stats.body_layout_calls += 1;
+        (*s).paint_stats.body_set_rect_calls += 1;
     }
     let mut r = Rect::default();
     GetClientRect((*s).window, &mut r);
@@ -751,7 +794,7 @@ unsafe fn layout(s: *mut State) {
         right: (shell - side).max(side + 20),
         bottom: (h - bottom).max(top + 20),
     };
-    SendMessageW((*s).body, 0xb3, 0, &rect as *const _ as isize); // EM_SETRECTNP
+    SendMessageW((*s).body, 0xb3, 0, &rect as *const _ as isize); // EM_SETRECT
     MoveWindow((*s).overlay, 0, 0, w, h, 1);
     let pw = px(s, 560).min((w - px(s, 48)).max(px(s, 120)));
     let max_height = (h - px(s, 180)).max(px(s, 116));
@@ -834,7 +877,7 @@ unsafe fn update_thumb(s: *mut State, reveal: bool) {
     MoveWindow((*s).thumb, x, y, px(s, 20), th, 1);
     if reveal && max > 0 && (*s).picker.is_none() {
         (*s).thumb_visible = true;
-        ShowWindow((*s).thumb, 5);
+        SetWindowPos((*s).thumb, ptr::null_mut(), 0, 0, 0, 0, 0x53);
         SetTimer((*s).window, 3, 1500, ptr::null_mut());
     }
     if max <= 0 || (*s).picker.is_some() {
@@ -976,9 +1019,61 @@ unsafe fn draw_picker(s: *mut State, h: Hwnd, dc: Handle) {
     GdiFlush();
 }
 unsafe fn paint_picker(s: *mut State, h: Hwnd) {
+    if (*s).test_mode {
+        (*s).paint_stats.picker_paints += 1;
+    }
     let mut p: Paint = mem::zeroed();
     let dc = BeginPaint(h, &mut p);
-    draw_picker(s, h, dc);
+    let width = p.rect.right - p.rect.left;
+    let height = p.rect.bottom - p.rect.top;
+    if width > 0 && height > 0 {
+        // Buffer just the invalid region, not the whole display. The backing
+        // bitmap is released after each paint, including while the picker is
+        // open; ordinary arrow moves need only two rows of temporary storage.
+        let buffer = CreateCompatibleDC(dc);
+        let bitmap = if buffer.is_null() {
+            ptr::null_mut()
+        } else {
+            CreateCompatibleBitmap(dc, width, height)
+        };
+        let mut presented = false;
+        if !bitmap.is_null() {
+            let original = SelectObject(buffer, bitmap);
+            if !original.is_null() && original as isize != -1 {
+                if SetViewportOrgEx(buffer, -p.rect.left, -p.rect.top, ptr::null_mut()) != 0 {
+                    draw_picker(s, h, buffer);
+                    // BeginPaint's destination clipping also protects the title
+                    // child. Transfer only the completed frame to the screen.
+                    presented = BitBlt(
+                        dc,
+                        p.rect.left,
+                        p.rect.top,
+                        width,
+                        height,
+                        buffer,
+                        p.rect.left,
+                        p.rect.top,
+                        0x00cc0020,
+                    ) != 0;
+                }
+                SelectObject(buffer, original);
+            }
+            DeleteObject(bitmap);
+        }
+        if presented {
+            if (*s).test_mode {
+                (*s).paint_stats.picker_buffered_presents += 1;
+            }
+        } else {
+            if (*s).test_mode {
+                (*s).paint_stats.picker_direct_fallbacks += 1;
+            }
+            draw_picker(s, h, dc);
+        }
+        if !buffer.is_null() {
+            DeleteDC(buffer);
+        }
+    }
     EndPaint(h, &p);
 }
 unsafe extern "system" fn overlay_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isize {
@@ -1028,10 +1123,7 @@ unsafe extern "system" fn overlay_proc(h: Hwnd, m: u32, w: usize, l: isize) -> i
                 {
                     let i = (*s).first + ((y - r.top - px(s, 52)) / px(s, 48)) as usize;
                     if i < (*s).items.len() && i != (*s).selected {
-                        (*s).selected = i;
-                        (*s).toast_focus = false;
-                        pause_toast(s);
-                        InvalidateRect(h, ptr::null(), 0);
+                        move_selection(s, i);
                         snapshot(s);
                     }
                 }
@@ -1089,6 +1181,9 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
     let s = STATE;
     if s.is_null() {
         return DefWindowProcW(h, m, w, l);
+    }
+    if (*s).test_mode && h == (*s).body && m == 0xf {
+        (*s).paint_stats.body_paints += 1;
     }
     let original = if h == (*s).body {
         (*s).body_proc
@@ -1240,6 +1335,8 @@ unsafe fn snapshot(s: *mut State) {
     let mut data=format!("{{\"window\":{},\"editor\":{},\"overlay\":{},\"titleEditor\":{},\"thumb\":{},\"ready\":{},\"hidden\":{},\"visible\":{},\"active\":{},\"text\":{},\"dirty\":{},\"error\":{},\"picker\":{},\"selected\":{},\"first\":{},\"items\":[{}],\"catalog\":[{}],\"archives\":[{}],\"renaming\":{},\"titleText\":{},\"renameError\":{},\"composing\":{},\"undoArchive\":{},\"saveCount\":{},\"readyMs\":{:.3},\"scale\":{},\"charFormatSize\":{},\"paraFormatSize\":{},\"font\":{},\"fontTwips\":{},\"spacingTwips\":{},\"lineSpacingTwips\":{},\"lineRule\":{},\"formatRect\":[{},{},{},{}],\"pickerRect\":[{},{},{},{}]}}",
  (*s).window as usize,(*s).body as usize,(*s).overlay as usize,(*s).title_edit as usize,(*s).thumb as usize,(*s).ready,(*s).hidden,IsWindowVisible((*s).window)!=0,(*s).active.as_deref().map(json).unwrap_or("null".into()),json(&value),(*s).dirty,(*s).error.as_deref().map(json).unwrap_or("null".into()),(*s).picker.map(|a|if a{"\"archived\""}else{"\"normal\""}).unwrap_or("null"),(*s).selected,(*s).first,items,catalog,archives,(*s).renaming,json(&title_value),(*s).rename_error.as_deref().map(json).unwrap_or("null".into()),(*s).composing,(*s).undo_archive.as_deref().map(json).unwrap_or("null".into()),(*s).save_count,(*s).ready_ms,(*s).scale,cf.size,pf.size,json(&face),cf.height,cf.spacing,pf.line_spacing,pf.line_rule,rect.left,rect.top,rect.right,rect.bottom,(*s).picker_rect.left,(*s).picker_rect.top,(*s).picker_rect.right,(*s).picker_rect.bottom);
     data.pop();
+    let stats = &(*s).paint_stats;
+    data.push_str(&format!(",\"bodyPaints\":{},\"bodyLayoutCalls\":{},\"bodySetRectCalls\":{},\"pickerPaints\":{},\"pickerBufferedPresents\":{},\"pickerDirectFallbacks\":{}", stats.body_paints, stats.body_layout_calls, stats.body_set_rect_calls, stats.picker_paints, stats.picker_buffered_presents, stats.picker_direct_fallbacks));
     data.push_str(&format!(
         ",\"saving\":{},\"busy\":{},\"generation\":{},\"savedGeneration\":{},\"lastSaveMs\":{}",
         (*s).saving,
@@ -1581,6 +1678,7 @@ unsafe fn run() -> Result<(), String> {
     };
     let worker = Worker::start(store, save_delay)?;
     let s = Box::into_raw(Box::new(State {
+        paint_stats: PaintStats::default(),
         worker,
         view,
         inflight: false,
@@ -1694,7 +1792,7 @@ unsafe fn run() -> Result<(), String> {
         0,
         wide("RICHEDIT50W").as_ptr(),
         wide("").as_ptr(),
-        0x40000000 | 0x10000000 | 0x00200000 | 0x00010000 | 4 | 8 | 0x40 | 0x1000,
+        0x40000000 | 0x10000000 | 0x04000000 | 0x00200000 | 0x00010000 | 4 | 8 | 0x40 | 0x1000,
         0,
         0,
         100,
@@ -1717,7 +1815,7 @@ unsafe fn run() -> Result<(), String> {
         0,
         thumb_class.as_ptr(),
         wide("").as_ptr(),
-        0x40000000,
+        0x40000000 | 0x04000000,
         0,
         0,
         20,
@@ -1731,7 +1829,7 @@ unsafe fn run() -> Result<(), String> {
         0,
         overlay_class.as_ptr(),
         wide("メモ").as_ptr(),
-        0x40000000 | 0x02000000,
+        0x40000000 | 0x02000000 | 0x04000000,
         0,
         0,
         100,

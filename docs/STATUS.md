@@ -1,5 +1,19 @@
 # STATUS · 2026-10-18
 
+## モーダルのちらつきを修正 · 最新
+
+本人の「中央モーダルやアーカイブモーダルで上下カーソル移動をしていると画面がチカチカしたりメモの内容が一瞬画面に表示される」報告に対応。修正版を `build/native-next.exe` へ配置済み。**現在の窓を通常どおり閉じ、Win → minimal-editor → Enterで開き直すと反映する**。稼働中の本人の窓・原稿は閉じたり操作したりしていない。
+
+原因は、上下移動からlayout()を呼び、毎回本文へMoveWindow(repaint=true)とEM_SETRECTを送っていたこと。さらに本文とモーダルの兄弟クリッピングがなく、モーダルの子ウィンドウZ順も明示していなかった。選択変更は旧行・新行（スクロール時は一覧領域）だけを無効化し、本文の配置へ触れないよう修正。本文・一覧・スクロール部品へWS_CLIPSIBLINGSを付け、表示時はSetWindowPosで一覧／バーを兄弟の手前へ置く。一覧のWM_PAINTは更新領域分の一時メモリDCで完成させてからBitBltで一括表示し、その都度解放する。
+
+修正前の専用desktop試験では、通常・保管各100キーで本文paint/layout/書式領域設定が各+100。修正後は全て0。強制本文再描画後も、一覧に覆われた本文DCのclipは空。実バッファ転送・fallbackなし、追加100キー後のGDI個数増加0、スクロール境界・狭幅/広幅・改名・一覧切替が合格。最終 `.work/native-picker-ui-lruqntcm/result.json`。既存の保存・作成・改名・保管/取消/復元・実日常起動のGUIも `.work/native-next-ui-f_ujnq5g/result.json` で合格。PNGを親が確認。動画による人の知覚評価ではなく、再現経路・描画遮断と実GUIの検証である。
+
+実行中exeはWindowsで上書きできなかったため、コピーアプリでrename更新を先に検証。build-native.ps1をmutex取得→staging構築→旧exeを固有退避名へrename→新版配置、失敗時rollbackへ改善した。コンパイル失敗と配置失敗の故障注入、旧processの応答継続も隔離試験 `.work/native-update-probe-4vjsviip/result.json` で確認。実更新後も本人の旧process生存を確認し、ランチャ・保存先は変更していない。新版は423,936 bytes、SHA-256 `23c4a9733af8da56249577c264133733bab4f909bfb6eb459b33e73f4c610ad0`。
+
+再現は `tests/native_picker_desktop.py`（scripts/test-native.ps1にも追加）。一時画像は待機時に保持しないが、全画面再描画のバッファは更新領域の大きさに依存する。ピークも10MB未満という保証は追加しない。本人待ちの判断なし。再起動後の通常利用へ戻す。
+
+以下は前回までの記録。
+
 ## ネイティブ版を採用 · 最新
 
 本人がネイティブ版の採用、入力を止めない保存、日常の起動先切替、ブラウザ版保持を指示。対応完了。**Win → minimal-editor → Enter** はネイティブ版を開く。既存Start Menu項目は `scripts/app.vbs` を参照しているため外部shortcutは変更せず、repo内の起動処理を切り替えた。明示起動は `ネイティブ版.vbs`／`ブラウザ版.vbs`、比較は `ネイティブ比較.vbs`。

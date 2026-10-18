@@ -202,6 +202,15 @@ extern "system" {
     pub fn GetWindowTextLengthW(h: Hwnd) -> i32;
     pub fn GetClientRect(h: Hwnd, r: *mut Rect) -> i32;
     pub fn MoveWindow(h: Hwnd, x: i32, y: i32, w: i32, height: i32, repaint: i32) -> i32;
+    pub fn SetWindowPos(
+        h: Hwnd,
+        after: Hwnd,
+        x: i32,
+        y: i32,
+        w: i32,
+        height: i32,
+        flags: u32,
+    ) -> i32;
     pub fn LoadCursorW(instance: Handle, name: *const u16) -> Handle;
     pub fn GetKeyState(key: i32) -> i16;
     pub fn FindWindowW(class: *const u16, title: *const u16) -> Hwnd;
@@ -229,6 +238,21 @@ extern "system" {
 #[link(name = "gdi32")]
 extern "system" {
     pub fn GdiFlush() -> i32;
+    pub fn CreateCompatibleDC(dc: Handle) -> Handle;
+    pub fn CreateCompatibleBitmap(dc: Handle, width: i32, height: i32) -> Handle;
+    pub fn DeleteDC(dc: Handle) -> i32;
+    pub fn SetViewportOrgEx(dc: Handle, x: i32, y: i32, previous: *mut Point) -> i32;
+    pub fn BitBlt(
+        destination: Handle,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        source: Handle,
+        source_x: i32,
+        source_y: i32,
+        operation: u32,
+    ) -> i32;
     pub fn CreateSolidBrush(color: u32) -> Handle;
     pub fn DeleteObject(obj: Handle) -> i32;
     pub fn SelectObject(dc: Handle, obj: Handle) -> Handle;
