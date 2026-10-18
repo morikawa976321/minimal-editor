@@ -1,4 +1,14 @@
-# STATUS · 2026-10-18
+# STATUS · 2026-10-19
+
+## 全体のフォント統一・実画面プレビュー・左上のアプリ名非表示 · 最新
+
+ネイティブ版の本文／通常・保管一覧／改名／通知・エラーを、英数字Intel One Mono・日本語BIZ UDGothic・20論理pxへ統一。左上のアプリ名とアイコンは非表示。標準の移動・サイズ変更・右上ボタン、Alt+Tab用window名は維持。日常起動版へ配置済み。本人の窓と原稿は操作していない。通常どおり閉じてWin → minimal-editor → Enterで反映する。
+
+太さ400と500は実ビルド・非表示desktop上で撮影した。このPCでは両フォントとも500要求時の実選択weightが400で、5画面すべての400/500 PNGがバイト単位で一致。設定読戻し500と実際の描画が異なることを確認したため、日常版の太さ400は維持。比較は `docs/font-preview/index.html`（10枚の実PNG、原寸表示・本文／一覧／改名／保管／通知の切替、任意の選択結果テキスト）。新フォント導入や700化はしていない。
+
+検証合格: `.work/native-next-ui-95kjcyut/result.json`（保存・改名・保管／復元・実起動）、`.work/native-picker-ui-2liwtpno/result.json`（両一覧各100キーで本文paint/layout0、GDI継続増加0、改名・mouse）、`.work/native-scroll-ui-djuv10tv/result.json`（wheel/bar/折返し/選択・scroll保持）。最終撮影の再生成スクリプト自体も実行して `.work/native-font-preview-yov3dssy/result.json` で成功。保存した画像は同じソースの `.work/native-font-preview-jrtd8t23/` 撮影分。両候補の本文・改名300twipsと400/500を読戻し、各5画像一致。画像を目視確認し、HTMLの切替・画像参照・選択テキストも実行確認。再生成: `scripts/preview-native-font.ps1`。日常版SHA-256 `c0e3a15a39087c0a155d3cc346fea3590caf0445ad101d97dc2260df2ff4b643`。
+
+今後: 普段の起動へ戻す。太さを変えたい場合だけ比較ページの選択結果を返してもらう。ブラウザ版は保持。
 
 ## 本文幅と一覧余白を調整 · 最新
 

@@ -10,6 +10,23 @@ pub struct Point {
     pub y: i32,
 }
 #[repr(C)]
+#[derive(Default)]
+pub struct TextMetric {
+    pub height: i32,
+    pub ascent: i32,
+    pub descent: i32,
+    pub internal_leading: i32,
+    pub external_leading: i32,
+    pub average_width: i32,
+    pub max_width: i32,
+    pub weight: i32,
+    pub overhang: i32,
+    pub aspect_x: i32,
+    pub aspect_y: i32,
+    pub characters: [u16; 4],
+    pub attributes: [u8; 5],
+}
+#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct Rect {
     pub left: i32,
@@ -155,6 +172,7 @@ pub struct EditStream {
 // The SDK's C++ base structure and Rust's flattened repr(C) differ unless its
 // tail padding is explicit: see Microsoft windows-rs CHARFORMAT2W::Base.
 const _: () = {
+    assert!(std::mem::size_of::<TextMetric>() == 60);
     assert!(std::mem::size_of::<CharFormat>() == 116);
     assert!(std::mem::offset_of!(CharFormat, weight) == 92);
     assert!(std::mem::offset_of!(CharFormat, spacing) == 94);
@@ -264,6 +282,9 @@ extern "system" {
     pub fn CreateSolidBrush(color: u32) -> Handle;
     pub fn DeleteObject(obj: Handle) -> i32;
     pub fn SelectObject(dc: Handle, obj: Handle) -> Handle;
+    pub fn GetTextMetricsW(dc: Handle, metrics: *mut TextMetric) -> i32;
+    pub fn GetTextExtentPoint32W(dc: Handle, text: *const u16, count: i32, size: *mut Point)
+        -> i32;
     pub fn SetTextColor(dc: Handle, color: u32) -> u32;
     pub fn SetBkMode(dc: Handle, mode: i32) -> i32;
     pub fn SetBkColor(dc: Handle, color: u32) -> u32;

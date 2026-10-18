@@ -23,6 +23,8 @@ const BG: u32 = 0x202020;
 const FG: u32 = 0xdfdfdf;
 const PANEL: u32 = 0x292929;
 const SELECTED: u32 = 0x414141;
+const FONT_PX: i32 = 20;
+const FONT_WEIGHT: u16 = 400;
 const TITLE: &str = "minimal-editor · Native";
 const TEST_SHORTCUT: u32 = 0x8001;
 const TEST_SNAPSHOT: u32 = 0x8002;
@@ -91,7 +93,7 @@ struct State {
     title_proc: WndProc,
     brush: Handle,
     font: Handle,
-    small_font: Handle,
+    japanese_font: Handle,
     active: Option<String>,
     dirty: bool,
     loading: bool,
@@ -943,13 +945,128 @@ unsafe fn update_thumb(s: *mut State, reveal: bool) {
         ShowWindow((*s).thumb, 0);
     }
 }
-unsafe fn text(dc: Handle, r: Rect, value: &str, color: u32, font: Handle, flags: u32) {
+// Use explicit faces for both scripts; GDI does not share RichEdit's font association.
+unsafe fn text(s: *mut State, dc: Handle, r: Rect, value: &str, color: u32, flags: u32) {
+    let latin = (*s).font;
+    let japanese = (*s).japanese_font;
+    let old = SelectObject(dc, latin);
     SetTextColor(dc, color);
     SetBkMode(dc, 1);
-    let old = SelectObject(dc, font);
-    let mut r = r;
-    let s = wide(value);
-    DrawTextW(dc, s.as_ptr(), (s.len() - 1) as i32, &mut r, flags);
+    let mut latin_metrics = TextMetric::default();
+    GetTextMetricsW(dc, &mut latin_metrics);
+    SelectObject(dc, japanese);
+    let mut japanese_metrics = TextMetric::default();
+    GetTextMetricsW(dc, &mut japanese_metrics);
+    let ascent = latin_metrics.ascent.max(japanese_metrics.ascent);
+    let descent = latin_metrics.descent.max(japanese_metrics.descent);
+    let height = ascent + descent;
+    // Titles and notices are plain text. Keep contiguous script runs intact,
+    // including UTF-16 surrogate pairs, and never interpret ampersands as mnemonics.
+    let face = |c: char| if c <= '\u{024f}' { latin } else { japanese };
+    let measure = |value: &str| {
+        let mut total = 0;
+        let mut run = String::new();
+        let mut current = latin;
+        for c in value.chars().chain(Some('\0')) {
+            let next = face(c);
+            if c == '\0' || next != current {
+                if !run.is_empty() {
+                    SelectObject(dc, current);
+                    let units = wide(&run);
+                    let mut size = Point::default();
+                    GetTextExtentPoint32W(dc, units.as_ptr(), (units.len() - 1) as i32, &mut size);
+                    total += size.x;
+                    run.clear();
+                }
+                current = next;
+            }
+            if c != '\0' {
+                run.push(c);
+            }
+        }
+        total
+    };
+    let available = (r.right - r.left).max(0);
+    let single = flags & 0x20 != 0;
+    let mut lines = Vec::new();
+    if single {
+        let mut line = value.replace(['\r', '\n', '\t'], " ");
+        if flags & 0x8000 != 0 && measure(&line) > available {
+            while !line.is_empty() && measure(&(line.clone() + "…")) > available {
+                line.pop();
+            }
+            line.push('…');
+        }
+        lines.push(line);
+    } else {
+        let mut line = String::new();
+        for c in value.chars().filter(|c| *c != '\r') {
+            if c == '\n'
+                || (!line.is_empty() && measure(&(line.clone() + &c.to_string())) > available)
+            {
+                lines.push(mem::take(&mut line));
+            }
+            if c != '\n' {
+                line.push(c);
+            }
+        }
+        lines.push(line);
+    }
+    let mut y = r.top;
+    if single && flags & 4 != 0 {
+        y += ((r.bottom - r.top - height) / 2).max(0);
+    }
+    for line in lines {
+        if y + height > r.bottom {
+            break;
+        }
+        let mut x = r.left;
+        let width = measure(&line);
+        if flags & 1 != 0 {
+            x += ((available - width) / 2).max(0);
+        } else if flags & 2 != 0 {
+            x += (available - width).max(0);
+        }
+        let mut run = String::new();
+        let mut current = latin;
+        for c in line.chars().chain(Some('\0')) {
+            let next = face(c);
+            if c == '\0' || next != current {
+                if !run.is_empty() {
+                    SelectObject(dc, current);
+                    let units = wide(&run);
+                    let mut size = Point::default();
+                    GetTextExtentPoint32W(dc, units.as_ptr(), (units.len() - 1) as i32, &mut size);
+                    let metrics = if current == latin {
+                        &latin_metrics
+                    } else {
+                        &japanese_metrics
+                    };
+                    let top = y + ascent - metrics.ascent;
+                    let mut run_rect = Rect {
+                        left: x,
+                        top,
+                        right: r.right,
+                        bottom: r.bottom,
+                    };
+                    DrawTextW(
+                        dc,
+                        units.as_ptr(),
+                        (units.len() - 1) as i32,
+                        &mut run_rect,
+                        0x820,
+                    );
+                    x += size.x;
+                    run.clear();
+                }
+                current = next;
+            }
+            if c != '\0' {
+                run.push(c);
+            }
+        }
+        y += height;
+    }
     SelectObject(dc, old);
 }
 unsafe fn rounded(dc: Handle, r: Rect, color: u32, radius: i32) {
@@ -983,6 +1100,7 @@ unsafe fn draw_picker(s: *mut State, h: Hwnd, dc: Handle) {
         }
         if !((*s).renaming && index == (*s).selected) {
             text(
+                s,
                 dc,
                 Rect {
                     left: row.left + px(s, 16),
@@ -992,13 +1110,13 @@ unsafe fn draw_picker(s: *mut State, h: Hwnd, dc: Handle) {
                 },
                 &(&(*s).items)[index].title,
                 FG,
-                (*s).font,
                 0x24 | 0x8000,
             );
         }
     }
     if let Some(e) = (*s).rename_error.as_deref() {
         text(
+            s,
             dc,
             Rect {
                 left: r.left + px(s, 32),
@@ -1008,7 +1126,6 @@ unsafe fn draw_picker(s: *mut State, h: Hwnd, dc: Handle) {
             },
             e,
             0xa5b8df,
-            (*s).small_font,
             0x10,
         );
     }
@@ -1016,6 +1133,7 @@ unsafe fn draw_picker(s: *mut State, h: Hwnd, dc: Handle) {
         let toast = (*s).toast_rect;
         rounded(dc, toast, 0x303030, px(s, 8));
         text(
+            s,
             dc,
             Rect {
                 left: toast.left + px(s, 20),
@@ -1025,7 +1143,6 @@ unsafe fn draw_picker(s: *mut State, h: Hwnd, dc: Handle) {
             },
             "アーカイブしました",
             FG,
-            (*s).small_font,
             0x24,
         );
         let button = Rect {
@@ -1040,10 +1157,11 @@ unsafe fn draw_picker(s: *mut State, h: Hwnd, dc: Handle) {
             if (*s).toast_focus { 0x686868 } else { 0x4b4b4b },
             px(s, 8),
         );
-        text(dc, button, "取り消す", FG, (*s).small_font, 0x25);
+        text(s, dc, button, "取り消す", FG, 0x25);
     }
     if let Some(e) = (*s).error.as_deref() {
         text(
+            s,
             dc,
             Rect {
                 left: px(s, 18),
@@ -1053,7 +1171,6 @@ unsafe fn draw_picker(s: *mut State, h: Hwnd, dc: Handle) {
             },
             e,
             0xb0b0b0,
-            (*s).small_font,
             0x2 | 0x8000,
         );
     }
@@ -1399,6 +1516,15 @@ unsafe fn snapshot(s: *mut State) {
     let mut data=format!("{{\"window\":{},\"editor\":{},\"overlay\":{},\"titleEditor\":{},\"thumb\":{},\"ready\":{},\"hidden\":{},\"visible\":{},\"active\":{},\"text\":{},\"dirty\":{},\"error\":{},\"picker\":{},\"selected\":{},\"first\":{},\"items\":[{}],\"catalog\":[{}],\"archives\":[{}],\"renaming\":{},\"titleText\":{},\"renameError\":{},\"composing\":{},\"undoArchive\":{},\"saveCount\":{},\"readyMs\":{:.3},\"scale\":{},\"charFormatSize\":{},\"paraFormatSize\":{},\"font\":{},\"fontTwips\":{},\"spacingTwips\":{},\"lineSpacingTwips\":{},\"lineRule\":{},\"formatRect\":[{},{},{},{}],\"pickerRect\":[{},{},{},{}]}}",
  (*s).window as usize,(*s).body as usize,(*s).overlay as usize,(*s).title_edit as usize,(*s).thumb as usize,(*s).ready,(*s).hidden,IsWindowVisible((*s).window)!=0,(*s).active.as_deref().map(json).unwrap_or("null".into()),json(&value),(*s).dirty,(*s).error.as_deref().map(json).unwrap_or("null".into()),(*s).picker.map(|a|if a{"\"archived\""}else{"\"normal\""}).unwrap_or("null"),(*s).selected,(*s).first,items,catalog,archives,(*s).renaming,json(&title_value),(*s).rename_error.as_deref().map(json).unwrap_or("null".into()),(*s).composing,(*s).undo_archive.as_deref().map(json).unwrap_or("null".into()),(*s).save_count,(*s).ready_ms,(*s).scale,cf.size,pf.size,json(&face),cf.height,cf.spacing,pf.line_spacing,pf.line_rule,rect.left,rect.top,rect.right,rect.bottom,(*s).picker_rect.left,(*s).picker_rect.top,(*s).picker_rect.right,(*s).picker_rect.bottom);
     data.pop();
+    let mut title_format: CharFormat = mem::zeroed();
+    title_format.size = mem::size_of::<CharFormat>() as u32;
+    SendMessageW(
+        (*s).title_edit,
+        EM_GETCHARFORMAT,
+        0,
+        &mut title_format as *mut _ as isize,
+    );
+    data.push_str(&format!(",\"fontWeight\":{},\"titleFontTwips\":{},\"titleFontWeight\":{},\"uiFontPixels\":{},\"uiFontWeight\":{}", cf.weight, title_format.height, title_format.weight, FONT_PX, FONT_WEIGHT));
     let mut body_scroll = Point::default();
     let mut body_selection = CharRange::default();
     SendMessageW(
@@ -1517,6 +1643,7 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
                 let mut r = Rect::default();
                 GetClientRect(h, &mut r);
                 text(
+                    s,
                     dc,
                     Rect {
                         left: px(s, 18),
@@ -1526,7 +1653,6 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
                     },
                     e,
                     0xb0b0b0,
-                    (*s).small_font,
                     0x2 | 0x8000,
                 );
             }
@@ -1580,8 +1706,9 @@ unsafe fn configure_rich(_s: *mut State, h: Hwnd, body: bool) -> Result<(), Stri
     SendMessageW(h, 0x478, 0, 2); // EM_SETLANGOPTIONS IMF_AUTOFONT, no keyboard switching.
     let mut cf: CharFormat = mem::zeroed();
     cf.size = mem::size_of::<CharFormat>() as u32;
-    cf.mask = 0xec200000; // SIZE FACE COLOR SPACING BACKCOLOR CHARSET
-    cf.height = if body { 300 } else { 240 };
+    cf.mask = 0xec600000; // SIZE FACE COLOR SPACING BACKCOLOR CHARSET
+    cf.height = FONT_PX * 15;
+    cf.weight = FONT_WEIGHT;
     cf.spacing = if body { 3 } else { 0 };
     cf.color = FG;
     cf.bg = if body { BG } else { SELECTED };
@@ -1591,7 +1718,8 @@ unsafe fn configure_rich(_s: *mut State, h: Hwnd, body: bool) -> Result<(), Stri
     SendMessageW(h, EM_SETCHARFORMAT, 0, &cf as *const _ as isize);
     let mut japanese: CharFormat = mem::zeroed();
     japanese.size = mem::size_of::<CharFormat>() as u32;
-    japanese.mask = 0xaa000000;
+    japanese.mask = 0xaa400000;
+    japanese.weight = FONT_WEIGHT;
     japanese.height = cf.height;
     japanese.charset = 128;
     japanese.locale = 0x411;
@@ -1637,8 +1765,9 @@ unsafe fn uniform_body_format(s: *mut State) {
     );
     let mut cf: CharFormat = mem::zeroed();
     cf.size = mem::size_of::<CharFormat>() as u32;
-    cf.mask = 0xec200000;
-    cf.height = 300;
+    cf.mask = 0xec600000;
+    cf.height = FONT_PX * 15;
+    cf.weight = FONT_WEIGHT;
     cf.spacing = 3;
     cf.color = FG;
     cf.bg = BG;
@@ -1787,7 +1916,7 @@ unsafe fn run() -> Result<(), String> {
         title_proc: None,
         brush,
         font: ptr::null_mut(),
-        small_font: ptr::null_mut(),
+        japanese_font: ptr::null_mut(),
         active: None,
         dirty: false,
         loading: false,
@@ -1827,7 +1956,7 @@ unsafe fn run() -> Result<(), String> {
     }));
     STATE = s;
     (*s).window = CreateWindowExW(
-        0,
+        1, // WS_EX_DLGMODALFRAME suppresses the title-bar icon.
         class.as_ptr(),
         wide(TITLE).as_ptr(),
         0x02cf0000,
@@ -1846,12 +1975,15 @@ unsafe fn run() -> Result<(), String> {
     (*s).scale = GetDpiForWindow((*s).window) as f64 / 96.0;
     let dark = 1i32;
     DwmSetWindowAttribute((*s).window, 20, &dark as *const _ as *const c_void, 4);
+    // Fixed caption/text colors hide the label in both active and inactive states.
+    DwmSetWindowAttribute((*s).window, 35, &BG as *const _ as *const c_void, 4);
+    DwmSetWindowAttribute((*s).window, 36, &BG as *const _ as *const c_void, 4);
     (*s).font = CreateFontW(
-        -px(s, 16),
+        -px(s, FONT_PX),
         0,
         0,
         0,
-        400,
+        FONT_WEIGHT as i32,
         0,
         0,
         0,
@@ -1860,14 +1992,14 @@ unsafe fn run() -> Result<(), String> {
         0,
         5,
         0,
-        wide("BIZ UDGothic").as_ptr(),
+        wide("Intel One Mono").as_ptr(),
     );
-    (*s).small_font = CreateFontW(
-        -px(s, 14),
+    (*s).japanese_font = CreateFontW(
+        -px(s, FONT_PX),
         0,
         0,
         0,
-        400,
+        FONT_WEIGHT as i32,
         0,
         0,
         0,
@@ -2010,7 +2142,7 @@ unsafe fn run() -> Result<(), String> {
     STATE = ptr::null_mut();
     let owned = Box::from_raw(s);
     DeleteObject(owned.font);
-    DeleteObject(owned.small_font);
+    DeleteObject(owned.japanese_font);
     DeleteObject(owned.brush);
     drop(owned);
     Ok(())
