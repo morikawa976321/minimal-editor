@@ -21,7 +21,7 @@ def child(folder, desktop):
     result = {"passed": False, "captures": [], "formats": []}
     process = None
     try:
-        for weight, name in ((400, "native-next.exe"), (500, "native-font-500.exe")):
+        for weight, name in ((400, "native-next.exe"), (500, "native-font-500.exe"), (700, "native-font-700.exe")):
             data = folder / str(weight)
             (data / "memos").mkdir(parents=True)
             titles = ["temp.txtから テスト 123", "文章を書く o r u n m f", "保管したメモ Archive 456"]
@@ -62,6 +62,10 @@ def child(folder, desktop):
                 value = state()
                 expected = {"picker": "normal", "rename": "normal", "archive": "archived", "toast": "normal"}.get(mode)
                 assert value["picker"] == expected, value
+                if mode == "body":
+                    # Hide the owned RichEdit caret so its blink phase cannot
+                    # masquerade as a difference in the font comparison.
+                    send(value["editor"], 0x8, 0, 0)  # WM_KILLFOCUS
                 time.sleep(0.08)
                 gui.checked(redraw(window, None, None, 0x185))
                 if expected:
@@ -93,6 +97,9 @@ def child(folder, desktop):
         result["identical_screenshots"] = {mode: (folder / f"{mode}-400.png").read_bytes() ==
                                          (folder / f"{mode}-500.png").read_bytes()
                                          for mode in ("body", "picker", "rename", "archive", "toast")}
+        result["700_matches_400"] = {mode: (folder / f"{mode}-400.png").read_bytes() ==
+                                    (folder / f"{mode}-700.png").read_bytes()
+                                    for mode in ("body", "picker", "rename", "archive", "toast")}
         result["passed"] = True
     except BaseException:
         result["error"] = traceback.format_exc()

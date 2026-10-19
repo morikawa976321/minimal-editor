@@ -7,14 +7,14 @@
 body{margin:24px;background:#161616;color:#ddd;font:16px system-ui}button{font:inherit;background:#303030;color:inherit;border:0;border-radius:6px;padding:10px 16px;cursor:pointer}button[aria-pressed=true]{background:#555}nav{display:flex;gap:10px;margin:16px 0;flex-wrap:wrap}p{color:#aaa;line-height:1.6}figure{margin:0;overflow:auto;background:#202020}img{display:block;max-width:100%;height:auto}figure.actual img{max-width:none}textarea{display:block;width:min(100%,650px);margin-top:16px;background:#222;color:#ddd;border:0;padding:12px;font:inherit}small{color:#aaa}
 </style>
 <nav id="modes"><button data-mode="body">本文</button><button data-mode="picker">メモ一覧</button><button data-mode="rename">改名</button><button data-mode="archive">アーカイブ</button><button data-mode="toast">通知</button></nav>
-<nav id="weights"><button data-weight="400">400</button><button data-weight="500">500</button><button id="actual" aria-pressed="false">画像を原寸表示</button></nav>
+<nav id="weights"><button data-weight="400">400</button><button data-weight="500">500</button><button data-weight="700">700（太字）</button><button id="actual" aria-pressed="false">画像を原寸表示</button></nav>
 <p>英数字 Intel One Mono ／ 日本語 BIZ UDGothic · 20px。Windows拡大率125%で実際のアプリを撮影。文字をHTMLで再現していません。<br>このPCでは400・500指定とも実フォントの太さ400が選ばれ、5画面すべての画像が一致しました。日常版は400を維持しています。</p>
-<figure><img id="preview" src="body-500.png" alt="太さ500指定・本文の実スクリーンショット"></figure>
-<p>太さの指定を変えたい場合だけ選択してください。現在のPCで表示の差はありません。</p>
-<nav id="choices"><button data-choice="400を維持">400を維持（推奨：表示が同じ）</button><button data-choice="500を指定">500を指定</button><button data-choice="どちらも問題ない">どちらも問題ない</button></nav>
+<figure><img id="preview" src="body-700.png" alt="太さ700指定・本文の実スクリーンショット"></figure>
+<p>400は標準、700は太字です。本文・一覧・改名・通知を切り替えて比較できます。日常版の太さは400のままです。</p>
+<nav id="choices"><button data-choice="400を維持">400を維持</button><button data-choice="700を採用">700を採用</button><button data-choice="どちらも問題ない">どちらも問題ない</button></nav>
 <textarea id="result" rows="2" readonly aria-label="選択結果"></textarea><small>選択結果を次のメッセージに貼ってください。</small>
 <script>
-let mode='body',weight='500';
+let mode='body',weight='700';
 const preview=document.getElementById('preview'),actual=document.getElementById('actual'),result=document.getElementById('result');
 const modes={body:'本文',picker:'メモ一覧',rename:'改名',archive:'アーカイブ',toast:'通知'};
 function show(){preview.src=`${mode}-${weight}.png`;preview.alt=`太さ${weight}指定・${modes[mode]}の実スクリーンショット`;document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===mode));document.querySelectorAll('[data-weight]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.weight===weight));}

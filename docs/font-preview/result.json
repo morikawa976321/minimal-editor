@@ -50,6 +50,31 @@
       "weight": 500,
       "mode": "toast",
       "path": "toast-500.png"
+    },
+    {
+      "weight": 700,
+      "mode": "body",
+      "path": "body-700.png"
+    },
+    {
+      "weight": 700,
+      "mode": "picker",
+      "path": "picker-700.png"
+    },
+    {
+      "weight": 700,
+      "mode": "rename",
+      "path": "rename-700.png"
+    },
+    {
+      "weight": 700,
+      "mode": "archive",
+      "path": "archive-700.png"
+    },
+    {
+      "weight": 700,
+      "mode": "toast",
+      "path": "toast-700.png"
     }
   ],
   "formats": [
@@ -68,6 +93,14 @@
       "titleFontTwips": 300,
       "titleFontWeight": 500,
       "scale": 1.25
+    },
+    {
+      "font": "Intel One Mono",
+      "fontTwips": 300,
+      "fontWeight": 700,
+      "titleFontTwips": 300,
+      "titleFontWeight": 700,
+      "scale": 1.25
     }
   ],
   "identical_screenshots": {
@@ -77,15 +110,24 @@
     "archive": true,
     "toast": true
   },
+  "700_matches_400": {
+    "body": false,
+    "picker": false,
+    "rename": false,
+    "archive": false,
+    "toast": false
+  },
   "actual_gdi_weights": {
     "Intel One Mono": {
       "requested_400": 400,
-      "requested_500": 400
+      "requested_500": 400,
+      "requested_700": 700
     },
     "BIZ UDGothic": {
       "requested_400": 400,
-      "requested_500": 400
+      "requested_500": 400,
+      "requested_700": 700
     }
   },
-  "capture_method": "PrintWindow on owned undisplayed Windows desktop, DPI 125%, synthetic sample text"
+  "capture_method": "PrintWindow on owned undisplayed Windows desktop, DPI 125%, synthetic sample text, body caret hidden"
 }
