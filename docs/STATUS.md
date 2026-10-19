@@ -1,5 +1,15 @@
 # STATUS · 2026-10-19
 
+## 実アプリ内の一時400／700トグル · 最新
+
+本人の依頼で日常版の右上に400／700の切替を常時表示。本文・通常／保管一覧・改名・通知へ即時反映。比較用で保存せず、終了・再起動で400へ戻る。ウィンドウを通常どおり閉じ、Win → minimal-editor → Enterで反映。本人の窓や原稿は操作していない。
+
+太さはStateに保持し、切替時は両GDIフォントを再生成しRichEditへweightだけ適用する。選択・scroll・変更フラグ・focusを保持し、EN_CHANGEを保存世代へ数えない。TOMのUndo(tomSuspend/tomResume)で表示変更をUndo履歴に混ぜない。IME変換中のクリックは無視して変換を継続できる。右上トグルのためにエラー表示領域を空け、一覧より手前に置く。新規メモにも選択中の太さを適用。
+
+最終日常exeの試験 `.work/native-weight-toggle-_1u2vn6j/result.json` は切替・選択／scroll／focus・generation／saveCount不変・Undo/Redo・新規入力・IME・一覧／改名／狭幅での実hit検証が合格。候補版で `.work/native-next-ui-t7q1_saw/result.json`（保存・保管・復元・日常ランチャ）、`.work/native-picker-ui-44h87m4i/result.json`（各100キー本文paint/layout0・GDI解放）、`.work/native-scroll-ui-pz8ptm9n/result.json`（wheel/bar/選択保持）が合格。配置後の保存遅延試験も `.work/native-async-ui-a1y82dve/result.json` で合格。PNGで通常・一覧・狭幅を目視確認。再現は `tests/native_weight_toggle_desktop.py`、通常suiteにも追加。最終SHA-256 `9766917baeea55a11a1f95b3c54fae9e2b6b4ed05e14b3b2cd50dd03d69e1bd3`。
+
+今後は本人が実際の本文で400／700を比較し、好みが決まったらこの一時トグルの撤去と既定値を指定できる。ブラウザ版は保持。
+
 ## 400と700の実スクリーンショット比較 · 最新
 
 本人の依頼で700候補を追加。`docs/font-preview/index.html`で400／500／700と、本文・一覧・改名・保管・通知を切替可能。実PNG15枚を保存。700を明確な太字として目視確認した。日常版は400のまま。採用は比較ページの400維持／700採用／どちらも問題ないから任意で選んで返してもらう。

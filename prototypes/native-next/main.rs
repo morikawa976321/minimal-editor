@@ -89,6 +89,8 @@ struct State {
     overlay: Hwnd,
     title_edit: Hwnd,
     thumb: Hwnd,
+    weight_toggle: Hwnd,
+    font_weight: u16,
     body_proc: WndProc,
     title_proc: WndProc,
     brush: Handle,
@@ -502,6 +504,7 @@ unsafe fn open_picker(s: *mut State, archived: bool) {
     // Child creation/showing does not guarantee the picker is above its editor
     // sibling. Clipping must follow this explicit child-window stacking order.
     SetWindowPos((*s).overlay, ptr::null_mut(), 0, 0, 0, 0, 0x53);
+    SetWindowPos((*s).weight_toggle, ptr::null_mut(), 0, 0, 0, 0, 0x53);
     // Keep the editor out of the visible/composited window tree throughout a
     // modal session, including its own asynchronous repaints and caret updates.
     ShowWindow((*s).body, 0);
@@ -849,6 +852,17 @@ unsafe fn layout(s: *mut State) {
             1,
         );
     }
+    if !(*s).weight_toggle.is_null() {
+        SetWindowPos(
+            (*s).weight_toggle,
+            ptr::null_mut(),
+            (w - px(s, 174)).max(0),
+            px(s, 8),
+            px(s, 150),
+            px(s, 40),
+            0x50,
+        );
+    }
     update_thumb(s, false);
 }
 unsafe fn scroll_geometry(s: *mut State) -> (i32, i32, i32, i32) {
@@ -1166,7 +1180,7 @@ unsafe fn draw_picker(s: *mut State, h: Hwnd, dc: Handle) {
             Rect {
                 left: px(s, 18),
                 top: px(s, 12),
-                right: full.right - px(s, 18),
+                right: full.right - px(s, 192),
                 bottom: px(s, 52),
             },
             e,
@@ -1379,6 +1393,196 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
     }
     result
 }
+// ITextDocument::Undo(tomSuspend/tomResume) keeps presentation changes out of
+// the text undo history. Never clear that history to change a display setting.
+struct UndoPause(Handle);
+impl UndoPause {
+    unsafe fn new(h: Hwnd) -> Option<Self> {
+        let mut ole: Handle = ptr::null_mut();
+        if SendMessageW(h, 0x43c, 0, &mut ole as *mut _ as isize) == 0 || ole.is_null() {
+            return None;
+        }
+        let table = *(ole as *const *const *const c_void);
+        let query: unsafe extern "system" fn(Handle, *const u8, *mut Handle) -> i32 =
+            mem::transmute(*table);
+        let release: unsafe extern "system" fn(Handle) -> u32 = mem::transmute(*table.add(2));
+        // IID_ITextDocument: 8cc497c0-a1df-11ce-8098-00aa0047be5d.
+        let iid: [u8; 16] = [
+            0xc0, 0x97, 0xc4, 0x8c, 0xdf, 0xa1, 0xce, 0x11, 0x80, 0x98, 0, 0xaa, 0, 0x47, 0xbe,
+            0x5d,
+        ];
+        let mut doc: Handle = ptr::null_mut();
+        let result = query(ole, iid.as_ptr(), &mut doc);
+        release(ole);
+        if result < 0 || doc.is_null() {
+            return None;
+        }
+        let pause = Self(doc);
+        if pause.undo(-9999995) < 0 {
+            return None;
+        }
+        Some(pause)
+    }
+    unsafe fn undo(&self, count: i32) -> i32 {
+        let table = *(self.0 as *const *const *const c_void);
+        let undo: unsafe extern "system" fn(Handle, i32, *mut i32) -> i32 =
+            mem::transmute(*table.add(22));
+        undo(self.0, count, ptr::null_mut())
+    }
+}
+impl Drop for UndoPause {
+    fn drop(&mut self) {
+        unsafe {
+            self.undo(-9999994);
+            let table = *(self.0 as *const *const *const c_void);
+            let release: unsafe extern "system" fn(Handle) -> u32 = mem::transmute(*table.add(2));
+            release(self.0);
+        }
+    }
+}
+unsafe fn set_display_weight(h: Hwnd, weight: u16) {
+    let mut selection = CharRange::default();
+    let mut scroll = Point::default();
+    SendMessageW(h, EM_EXGETSEL, 0, &mut selection as *mut _ as isize);
+    SendMessageW(h, EM_GETSCROLLPOS, 0, &mut scroll as *mut _ as isize);
+    let modified = SendMessageW(h, 0xb8, 0, 0);
+    let mut cf: CharFormat = mem::zeroed();
+    cf.size = mem::size_of::<CharFormat>() as u32;
+    cf.mask = 0x00400000; // CFM_WEIGHT only; keep script faces and paragraph layout.
+    cf.weight = weight;
+    SendMessageW(h, EM_SETCHARFORMAT, 4, &cf as *const _ as isize);
+    SendMessageW(h, EM_SETCHARFORMAT, 0, &cf as *const _ as isize);
+    SendMessageW(h, EM_EXSETSEL, 0, &selection as *const _ as isize);
+    SendMessageW(h, EM_SETSCROLLPOS, 0, &scroll as *const _ as isize);
+    SendMessageW(h, 0xb9, modified as usize, 0);
+}
+unsafe fn choose_weight(s: *mut State, weight: u16) {
+    if (*s).composing || weight == (*s).font_weight {
+        return;
+    }
+    let Some(body_pause) = UndoPause::new((*s).body) else {
+        return;
+    };
+    let Some(title_pause) = UndoPause::new((*s).title_edit) else {
+        return;
+    };
+    let new_font = |face: &str| {
+        CreateFontW(
+            -px(s, FONT_PX),
+            0,
+            0,
+            0,
+            weight as i32,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            5,
+            0,
+            wide(face).as_ptr(),
+        )
+    };
+    let latin = new_font("Intel One Mono");
+    let japanese = new_font("BIZ UDGothic");
+    if latin.is_null() || japanese.is_null() {
+        if !latin.is_null() {
+            DeleteObject(latin);
+        }
+        if !japanese.is_null() {
+            DeleteObject(japanese);
+        }
+        return;
+    }
+    let loading = (*s).loading;
+    (*s).loading = true;
+    set_display_weight((*s).body, weight);
+    set_display_weight((*s).title_edit, weight);
+    DeleteObject((*s).font);
+    DeleteObject((*s).japanese_font);
+    (*s).font = latin;
+    (*s).japanese_font = japanese;
+    (*s).font_weight = weight;
+    (*s).loading = loading;
+    drop(title_pause);
+    drop(body_pause);
+    if (*s).picker.is_some() {
+        InvalidateRect((*s).overlay, ptr::null(), 0);
+    } else {
+        InvalidateRect((*s).body, ptr::null(), 0);
+    }
+    InvalidateRect((*s).weight_toggle, ptr::null(), 0);
+    update_thumb(s, false);
+    snapshot(s);
+}
+unsafe fn draw_weight_toggle(s: *mut State, h: Hwnd, dc: Handle) {
+    let mut r = Rect::default();
+    GetClientRect(h, &mut r);
+    let brush = CreateSolidBrush(if (*s).picker.is_some() { 0x161616 } else { BG });
+    FillRect(dc, &r, brush);
+    DeleteObject(brush);
+    let mid = r.right / 2;
+    for (weight, left, right) in [(400, 0, mid), (700, mid, r.right)] {
+        let button = Rect {
+            left: left + px(s, 2),
+            top: px(s, 2),
+            right: right - px(s, 2),
+            bottom: r.bottom - px(s, 2),
+        };
+        if weight == (*s).font_weight {
+            rounded(dc, button, SELECTED, px(s, 6));
+        }
+        text(
+            s,
+            dc,
+            button,
+            &weight.to_string(),
+            if weight == (*s).font_weight {
+                FG
+            } else {
+                0x999999
+            },
+            0x25,
+        );
+    }
+    GdiFlush();
+}
+unsafe extern "system" fn weight_toggle_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isize {
+    let s = STATE;
+    if s.is_null() {
+        return DefWindowProcW(h, m, w, l);
+    }
+    match m {
+        0x21 => 3, // MA_NOACTIVATE: clicking must leave editing focus/IME intact.
+        0x201 => {
+            let mut r = Rect::default();
+            GetClientRect(h, &mut r);
+            choose_weight(
+                s,
+                if (l as i16 as i32) < r.right / 2 {
+                    400
+                } else {
+                    700
+                },
+            );
+            0
+        }
+        0xf => {
+            let mut p: Paint = mem::zeroed();
+            let dc = BeginPaint(h, &mut p);
+            draw_weight_toggle(s, h, dc);
+            EndPaint(h, &p);
+            0
+        }
+        0x318 => {
+            draw_weight_toggle(s, h, w as Handle);
+            0
+        }
+        0x14 => 1,
+        _ => DefWindowProcW(h, m, w, l),
+    }
+}
 unsafe extern "system" fn thumb_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isize {
     let s = STATE;
     if s.is_null() {
@@ -1524,7 +1728,12 @@ unsafe fn snapshot(s: *mut State) {
         0,
         &mut title_format as *mut _ as isize,
     );
-    data.push_str(&format!(",\"fontWeight\":{},\"titleFontTwips\":{},\"titleFontWeight\":{},\"uiFontPixels\":{},\"uiFontWeight\":{}", cf.weight, title_format.height, title_format.weight, FONT_PX, FONT_WEIGHT));
+    data.push_str(&format!(",\"fontWeight\":{},\"titleFontTwips\":{},\"titleFontWeight\":{},\"uiFontPixels\":{},\"uiFontWeight\":{}", cf.weight, title_format.height, title_format.weight, FONT_PX, (*s).font_weight));
+    data.push_str(&format!(
+        ",\"weightToggle\":{},\"focusedWindow\":{}",
+        (*s).weight_toggle as usize,
+        GetFocus() as usize
+    ));
     let mut body_scroll = Point::default();
     let mut body_selection = CharRange::default();
     SendMessageW(
@@ -1648,7 +1857,7 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
                     Rect {
                         left: px(s, 18),
                         top: px(s, 12),
-                        right: r.right - px(s, 18),
+                        right: r.right - px(s, 192),
                         bottom: px(s, 48),
                     },
                     e,
@@ -1691,7 +1900,7 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
         _ => DefWindowProcW(h, m, w, l),
     }
 }
-unsafe fn configure_rich(_s: *mut State, h: Hwnd, body: bool) -> Result<(), String> {
+unsafe fn configure_rich(s: *mut State, h: Hwnd, body: bool) -> Result<(), String> {
     // The system RichEdit rejects paragraph spacing in TM_PLAINTEXT (verified).
     // Use its richer layout engine for the body, while plain Unicode input and
     // paste, literal .txt loading, and disabled formatting keys keep .txt semantics.
@@ -1708,7 +1917,7 @@ unsafe fn configure_rich(_s: *mut State, h: Hwnd, body: bool) -> Result<(), Stri
     cf.size = mem::size_of::<CharFormat>() as u32;
     cf.mask = 0xec600000; // SIZE FACE COLOR SPACING BACKCOLOR CHARSET
     cf.height = FONT_PX * 15;
-    cf.weight = FONT_WEIGHT;
+    cf.weight = (*s).font_weight;
     cf.spacing = if body { 3 } else { 0 };
     cf.color = FG;
     cf.bg = if body { BG } else { SELECTED };
@@ -1719,7 +1928,7 @@ unsafe fn configure_rich(_s: *mut State, h: Hwnd, body: bool) -> Result<(), Stri
     let mut japanese: CharFormat = mem::zeroed();
     japanese.size = mem::size_of::<CharFormat>() as u32;
     japanese.mask = 0xaa400000;
-    japanese.weight = FONT_WEIGHT;
+    japanese.weight = (*s).font_weight;
     japanese.height = cf.height;
     japanese.charset = 128;
     japanese.locale = 0x411;
@@ -1767,7 +1976,7 @@ unsafe fn uniform_body_format(s: *mut State) {
     cf.size = mem::size_of::<CharFormat>() as u32;
     cf.mask = 0xec600000;
     cf.height = FONT_PX * 15;
-    cf.weight = FONT_WEIGHT;
+    cf.weight = (*s).font_weight;
     cf.spacing = 3;
     cf.color = FG;
     cf.bg = BG;
@@ -1863,6 +2072,7 @@ unsafe fn run() -> Result<(), String> {
     let brush = CreateSolidBrush(BG);
     let overlay_class = wide(&format!("MinimalEditorNextPicker-{unique:016x}"));
     let thumb_class = wide(&format!("MinimalEditorNextThumb-{unique:016x}"));
+    let toggle_class = wide(&format!("MinimalEditorNextWeight-{unique:016x}"));
     for (name, proc) in [
         (
             &class,
@@ -1870,6 +2080,7 @@ unsafe fn run() -> Result<(), String> {
         ),
         (&overlay_class, overlay_proc),
         (&thumb_class, thumb_proc),
+        (&toggle_class, weight_toggle_proc),
     ] {
         let wc = WndClass {
             style: 3,
@@ -1912,6 +2123,8 @@ unsafe fn run() -> Result<(), String> {
         overlay: ptr::null_mut(),
         title_edit: ptr::null_mut(),
         thumb: ptr::null_mut(),
+        weight_toggle: ptr::null_mut(),
+        font_weight: FONT_WEIGHT,
         body_proc: None,
         title_proc: None,
         brush,
@@ -1983,7 +2196,7 @@ unsafe fn run() -> Result<(), String> {
         0,
         0,
         0,
-        FONT_WEIGHT as i32,
+        (*s).font_weight as i32,
         0,
         0,
         0,
@@ -1999,7 +2212,7 @@ unsafe fn run() -> Result<(), String> {
         0,
         0,
         0,
-        FONT_WEIGHT as i32,
+        (*s).font_weight as i32,
         0,
         0,
         0,
@@ -2085,6 +2298,23 @@ unsafe fn run() -> Result<(), String> {
         -4,
         rich_proc as *const () as isize,
     ));
+    (*s).weight_toggle = CreateWindowExW(
+        0,
+        toggle_class.as_ptr(),
+        wide("太さ 400 / 700").as_ptr(),
+        0x40000000 | 0x10000000 | 0x04000000,
+        0,
+        0,
+        150,
+        40,
+        (*s).window,
+        5usize as Handle,
+        instance,
+        ptr::null_mut(),
+    );
+    if (*s).weight_toggle.is_null() {
+        return Err(err());
+    }
     load_text(s, initial_id, &initial_text)?;
     (*s).ready = true;
     layout(s);
