@@ -26,18 +26,7 @@ AIと独立して一人で文章を書くための、設定機能すら持たな
 | B · Windows | Rust + Win32 EDIT | `data/native.txt` |
 | C · Python | Python + Tk Text | `data/tk.txt` |
 
-### AI への受け渡し（読み取り専用）
-
-Claude Code からは、タイトルかIDで原稿を引ける。原稿にも一覧にも書き込まないので、エディタを開いたままでも使える。
-
-```
-node scripts/memos.mjs list                 # 更新が新しい順
-node scripts/memos.mjs show <タイトルの一部かID>
-```
-
-Claude Code のスキル `minimal-editor`（`~/.claude/skills/minimal-editor/SKILL.md`）が、この CLI の使い方を持っている。「minimal-editorの○○を読んで」と頼めばよい。
-
-本文・バックアップ・ブラウザープロファイルは Git 対象外。設定画面、AI 機能（上の読み取り専用 CLI を除く）、クラウド連携は無い。
+本文・バックアップ・ブラウザープロファイルは Git 対象外。設定画面、AI 機能、クラウド連携は無い。
 
 ## 再構築
 

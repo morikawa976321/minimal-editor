@@ -1,9 +1,5 @@
 # STATUS · 2026-10-19
 
-## AIへの受け渡し(読み取り専用 CLI) · 最新
-
-`node scripts/memos.mjs list|show|path` で、タイトルかIDから原稿を引ける。Claude Code ではスキル `minimal-editor` が呼ぶ。原稿・一覧・ロックには触れない。試験は `node --test tests/memos-cli.test.mjs`(3件合格)。エディタ本体と exe は変更していない。PC2台間の同期は方式を本人に確認中で、未実装(decisions.md の 2026-10-19 の節)。
-
 ## 実アプリ内の一時400／700トグル · 最新
 
 本人の依頼で日常版の右上に400／700の切替を常時表示。本文・通常／保管一覧・改名・通知へ即時反映。比較用で保存せず、終了・再起動で400へ戻る。ウィンドウを通常どおり閉じ、Win → minimal-editor → Enterで反映。本人の窓や原稿は操作していない。
