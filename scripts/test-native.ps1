@@ -22,8 +22,6 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Native launcher tests failed' }
     & $python tests/native_next_desktop.py
     if ($LASTEXITCODE -ne 0) { throw 'Private desktop native GUI tests failed' }
-    & $python tests/native_weight_toggle_desktop.py
-    if ($LASTEXITCODE -ne 0) { throw 'Native live font toggle tests failed' }
     & $python tests/native_picker_desktop.py
     if ($LASTEXITCODE -ne 0) { throw 'Native picker paint tests failed' }
     & $python tests/native_scroll_desktop.py

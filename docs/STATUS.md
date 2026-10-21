@@ -1,4 +1,10 @@
-# STATUS · 2026-10-19
+# STATUS · 2026-10-21
+
+## 太さ400を採用・一時トグルを撤去 · 最新
+
+本人が「現状維持で400を使う」「とグロを消して」と決定。日常版を400固定に戻し、右上の400／700切替と専用child・動的weight／Undo一時停止処理・専用試験を削除。英数字Intel One Mono／日本語BIZ UDGothic・20px、本文幅・一覧余白等は維持。比較用HTMLとスクリーンショットは過去の記録として残す。本人待ちなし。
+
+更新exeを日常起動先へ配置済み。窓を閉じてWin → minimal-editor → Enterで反映する。本人の稼働窓や原稿には触れていない。専用desktopの既存GUI試験 `.work/native-next-ui-se5tv04k/result.json` で入力・Undo・保存・改名・保管／復元・再起動・ランチャが合格。最終snapshotの本文／改名／UI weight400、本文300twipsを確認。実PNGで右上のトグルが無いことも確認。SHA-256 `469397adb2d3eadcb2706b46659cbf93644598b22b315c478063baaf8bafd78b`。
 
 ## 実アプリ内の一時400／700トグル · 最新
 
