@@ -1,5 +1,13 @@
 # STATUS · 2026-10-21
 
+## 上下端のカーソル移動による警告音を抑止 · 最新
+
+本人の報告に対応。本文・改名欄の先頭表示行で上、末尾表示行で下を押した際、選択なし・修飾キーなし・IME変換中でなければ、その移動をRichEditへ渡さない。行内の位置・折返しを含む表示行で判定し、カーソルと本文を維持する。通常の移動・選択・IME候補操作は標準処理へ渡す。日常起動先 `build/native-next.exe` を更新済み。通常どおり閉じてWin → minimal-editor → Enterで反映。本人の稼働窓・原稿は操作していない。本人待ちなし。
+
+RichEditのSES_ALLOWBEEPSをクリアするだけの案は、実測で効果がなかったため撤去。`.work/sound_probe.py` と `.work/beep_import_probe.py` は自分で起動した隔離試験プロセスだけのmsftedit MessageBeep importをカウンターへ置換して呼出回数を測る一時検証用（製品には含めない）。先頭・末尾と行内の8ケース＋端での10回繰返しは、無効な消音設定案 `.work/native-scroll-ui-ncwhw8mr/result.json` で18回、最終版 `.work/native-scroll-ui-srvz02jf/result.json` で0回。元の日常版も `.work/native-scroll-ui-55sakus2/result.json` で上下端10回の警告音呼出を確認。音声出力自体の録音ではない。
+
+通常回帰試験 `.work/native-scroll-ui-52xjoupd/result.json` で境界のカーソル／本文不変・四方向移動・画面外移動時のスクロール・折返し・バー・上下余白が合格。`.work/native-next-ui-4ynrs8ms/result.json` で入力・Undo・保存・改名・IMEの確定ガード・保管／復元・再起動・実ランチャも合格。Shift／Ctrl等を伴う移動や選択範囲がある場合の境界音は今回の抑止対象外。
+
 ## スクロールしない矢印キー移動でバーを表示しない · 最新
 
 本人の指摘を修正。RichEditのキー入力前後で実スクロール座標を比較し、座標が変わったときだけバーを表示して非表示タイマーを更新する。画面内のカーソル移動では表示も表示時間の延長もしない。日常起動先 `build/native-next.exe` を更新済み。窓を閉じてWin → minimal-editor → Enterで反映。本人の稼働窓・原稿は操作していない。本人待ちなし。

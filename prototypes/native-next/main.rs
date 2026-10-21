@@ -1372,6 +1372,24 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
     } else {
         (*s).title_proc
     };
+    // RichEdit beeps on Up/Down beyond the first/last visual line even with
+    // SES_ALLOWBEEPS cleared. Consume only the native no-op case; selections,
+    // modified navigation and IME candidate keys must retain native handling.
+    if m == WM_KEYDOWN
+        && (w == 0x26 || w == 0x28)
+        && !(*s).composing
+        && [0x10, 0x11, 0x12].iter().all(|key| GetKeyState(*key) >= 0)
+    {
+        let mut selection = CharRange::default();
+        SendMessageW(h, EM_EXGETSEL, 0, &mut selection as *mut _ as isize);
+        if selection.min == selection.max {
+            let line = SendMessageW(h, 0x436, 0, selection.min as isize); // EM_EXLINEFROMCHAR
+            let lines = SendMessageW(h, 0xba, 0, 0); // EM_GETLINECOUNT (includes wrapping)
+            if (w == 0x26 && line == 0) || (w == 0x28 && line == lines - 1) {
+                return 0;
+            }
+        }
+    }
     if h == (*s).body && (m == 0x302 || (m == WM_CHAR && w == 0x16)) {
         return CallWindowProcW(original, h, 0x440, 13, 0);
     } // Plain Unicode paste only.

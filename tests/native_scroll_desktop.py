@@ -147,6 +147,17 @@ def child(folder, desktop):
                     return value if value.get("ready") else None
         first = gui.eventually(ready, "Native did not load")
         window, editor, overlay, thumb = first["window"], first["editor"], first["overlay"], first["thumb"]
+        # A single visual line has both boundaries, including within the line.
+        for position in (0, 1, len(first["text"])):
+            for vk in (0x26, 0x28):
+                send(editor, 0xB1, position, position)
+                before = state()
+                for _ in range(5):
+                    send(editor, 0x100, vk, 0)
+                after = state()
+                assert after["bodySelection"] == before["bodySelection"]
+                assert after["text"] == before["text"]
+        result["observations"]["boundary_navigation"] = "unchanged caret and text"
         needed = {"bodyScroll", "bodySelection", "bodyVisible", "scrollMax", "thumbVisible", "thumbRect"}
         assert needed <= first.keys(), f"Missing instrumentation: {sorted(needed - first.keys())}"
         gui.checked(move(window, 0, 0, 1100, 800, True))
