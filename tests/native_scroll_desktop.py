@@ -158,6 +158,25 @@ def child(folder, desktop):
 
         long = open_memo("long")
         assert long["scrollMax"] > 0 and long["bodyVisible"], compact(long)
+        send(window, 0x113, 3, 0)  # Deliver the existing hide timer without sleeping.
+        for vk in (0x27, 0x25, 0x28, 0x26):  # Right, left, down, up within view.
+            before_key = state()
+            send(editor, 0x100, vk, 0)
+            after_key = state()
+            assert after_key["bodySelection"] != before_key["bodySelection"], "Arrow did not move caret"
+            assert after_key["bodyScroll"] == before_key["bodyScroll"], compact(after_key)
+            assert not after_key["thumbVisible"], "Arrow revealed thumb without scrolling"
+        result["observations"]["arrows_without_scroll"] = compact(after_key)
+        for _ in range(50):
+            before_key = state()
+            send(editor, 0x100, 0x28, 0)
+            after_key = state()
+            if after_key["bodyScroll"] != before_key["bodyScroll"]:
+                break
+        else:
+            raise AssertionError("Down arrow never scrolled past the viewport")
+        assert after_key["thumbVisible"], "Caret scrolling must reveal thumb"
+        result["observations"]["arrow_caused_scroll"] = compact(after_key)
         # Compare the real RichEdit formatting area and thumb in host client
         # coordinates. Wide windows previously left the thumb inside the text.
         gaps = []
@@ -266,7 +285,7 @@ def child(folder, desktop):
         result["observations"].update({"wrap_wide": compact(wide), "wrap_narrow": compact(narrow), "wrap_wide_again": compact(wide_again)})
         assert not wide_again["dirty"] and not wide_again["error"]
         result["passed"] = True
-        result["checks"] = ["blank top and bottom margins after scrolling", "text and thumb separated at narrow and wide widths", "short text scrollbar hidden", "real wheel scrolls long text", "thumb hit testing",
+        result["checks"] = ["arrows reveal thumb only when viewport scrolls", "blank top and bottom margins after scrolling", "text and thumb separated at narrow and wide widths", "short text scrollbar hidden", "real wheel scrolls long text", "thumb hit testing",
                             "thumb drag scrolls", "modal hides body and scrollbar", "picker wheel leaves body unchanged",
                             "modal preserves selection and scroll", "short memo hides scrollbar", "resize wrapping updates scroll need"]
     except BaseException:

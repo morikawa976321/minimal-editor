@@ -1379,6 +1379,13 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
         (*s).composing = true;
         snapshot(s)
     }
+    // A key press can move only the caret. Reveal (and restart the hide timer)
+    // only if RichEdit actually moves the viewport while handling the input.
+    let track_scroll = h == (*s).body && [0x115, 0x100, 0x102].contains(&m);
+    let mut before_scroll = Point::default();
+    if track_scroll {
+        SendMessageW(h, EM_GETSCROLLPOS, 0, &mut before_scroll as *mut _ as isize);
+    }
     let result = CallWindowProcW(original, h, m, w, l);
     if m == 0x10e {
         (*s).composing = false;
@@ -1387,8 +1394,10 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
         }
         snapshot(s)
     }
-    if h == (*s).body && [0x20a, 0x115, 0x100, 0x102].contains(&m) {
-        update_thumb(s, true);
+    if track_scroll {
+        let mut after_scroll = Point::default();
+        SendMessageW(h, EM_GETSCROLLPOS, 0, &mut after_scroll as *mut _ as isize);
+        update_thumb(s, before_scroll.x != after_scroll.x || before_scroll.y != after_scroll.y);
     }
     result
 }
