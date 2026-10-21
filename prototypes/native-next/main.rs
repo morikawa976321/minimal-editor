@@ -790,6 +790,11 @@ unsafe fn move_selection(s: *mut State, index: usize) {
         InvalidateRect((*s).overlay, &(*s).toast_rect, 0);
     }
 }
+unsafe fn body_shell_width(s: *mut State, window_width: i32) -> i32 {
+    // 1205 logical pixels of text plus 48 per side. The thumb must use
+    // this same shell so changes to text width cannot put it over the text.
+    window_width.min(px(s, 1301))
+}
 unsafe fn layout(s: *mut State) {
     if (*s).window.is_null() || (*s).body.is_null() {
         return;
@@ -803,7 +808,7 @@ unsafe fn layout(s: *mut State) {
     let w = r.right;
     let h = r.bottom;
     // Text width: 1004 -> 1205 logical pixels (+20%, rounded), plus 48 per side.
-    let shell = w.min(px(s, 1301));
+    let shell = body_shell_width(s, w);
     let shell_x = (w - shell) / 2;
     MoveWindow((*s).body, shell_x, 0, shell, h, 1);
     let narrow = w <= px(s, 600);
@@ -813,7 +818,9 @@ unsafe fn layout(s: *mut State) {
     let rect = Rect {
         left: side,
         top,
-        right: (shell - side).max(side + 20),
+        // Reserve the 20px thumb, 4px outer inset and at least 12px gap
+        // even when the narrow layout uses only 24px on the left.
+        right: (shell - side.max(px(s, 36))).max(side + 20),
         bottom: (h - bottom).max(top + 20),
     };
     SendMessageW((*s).body, 0xb3, 0, &rect as *const _ as isize); // EM_SETRECT
@@ -919,7 +926,7 @@ unsafe fn update_thumb(s: *mut State, reveal: bool) {
     }
     let mut r = Rect::default();
     GetClientRect((*s).window, &mut r);
-    let shell = r.right.min(px(s, 1100));
+    let shell = body_shell_width(s, r.right);
     let shell_x = (r.right - shell) / 2;
     let y = px(s, 4)
         + if max > 0 {

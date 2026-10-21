@@ -38,7 +38,7 @@ def child(folder, desktop):
     exe = Path(os.environ.get("MINIMAL_EDITOR_NATIVE_EXE", str(gui.ROOT / "build/native-next.exe")))
     data, report = folder / "data", folder / "state.json"
     (data / "memos").mkdir(parents=True)
-    texts = {"short": "短い本文。", "long": ("日本語の長い文章を書く。Latin 123。\n" * 700), "wrap": "あ" * 300}
+    texts = {"short": "短い本文。", "long": (("日本語の長い文章を書く。Latin 123。" * 8 + "\n") * 700), "wrap": "あ" * 300}
     lines = ["minimal-editor-native-v1", "active\tshort"]
     for i, memo_id in enumerate(["short", "long", "wrap"] + [f"extra{j:02}" for j in range(37)]):
         title = f"メモ {memo_id}"
@@ -119,6 +119,26 @@ def child(folder, desktop):
 
         long = open_memo("long")
         assert long["scrollMax"] > 0 and long["bodyVisible"], compact(long)
+        # Compare the real RichEdit formatting area and thumb in host client
+        # coordinates. Wide windows previously left the thumb inside the text.
+        gaps = []
+        for width in (1700, 460, 1100, 2200):
+            gui.checked(move(window, 0, 0, width, 800, True))
+            wheel(editor)
+            geometry = state()
+            origin, host = Point(0, 0), Point(0, 0)
+            gui.checked(client_to_screen(editor, C.byref(origin)))
+            gui.checked(client_to_screen(window, C.byref(host)))
+            text_right = origin.x - host.x + geometry["formatRect"][2]
+            gap = geometry["thumbRect"][0] - text_right
+            gaps.append({"windowWidth": width, "textRight": text_right,
+                         "thumbLeft": geometry["thumbRect"][0], "gap": gap})
+            result["observations"]["text_thumb_gaps"] = gaps
+            assert geometry["thumbVisible"] and gap >= int(12 * geometry["scale"]) - 1, gaps
+            if width == 1700:
+                picture("wide-text-scroll-gap")
+        gui.checked(move(window, 0, 0, 1100, 800, True))
+        long = state()
         before = long["bodyScroll"][1]
         wheel(editor)
         wheeled = until(lambda s: s["bodyScroll"][1] > before, "Long body did not scroll on real WM_MOUSEWHEEL")
@@ -201,7 +221,7 @@ def child(folder, desktop):
         result["observations"].update({"wrap_wide": compact(wide), "wrap_narrow": compact(narrow), "wrap_wide_again": compact(wide_again)})
         assert not wide_again["dirty"] and not wide_again["error"]
         result["passed"] = True
-        result["checks"] = ["short text scrollbar hidden", "real wheel scrolls long text", "thumb hit testing",
+        result["checks"] = ["text and thumb separated at narrow and wide widths", "short text scrollbar hidden", "real wheel scrolls long text", "thumb hit testing",
                             "thumb drag scrolls", "modal hides body and scrollbar", "picker wheel leaves body unchanged",
                             "modal preserves selection and scroll", "short memo hides scrollbar", "resize wrapping updates scroll need"]
     except BaseException:
