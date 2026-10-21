@@ -810,20 +810,25 @@ unsafe fn layout(s: *mut State) {
     // Text width: 1004 -> 1205 logical pixels (+20%, rounded), plus 48 per side.
     let shell = body_shell_width(s, w);
     let shell_x = (w - shell) / 2;
-    MoveWindow((*s).body, shell_x, 0, shell, h, 1);
     let narrow = w <= px(s, 600);
     let side = px(s, if narrow { 24 } else { 48 });
     let top = px(s, if narrow { 36 } else { 60 });
     let bottom = px(s, 48);
+    // RichEdit's formatting rectangle does not reliably clear pixels outside
+    // it after scrolling. Keep vertical whitespace outside the HWND so stale
+    // lines cannot remain in either margin.
+    let body_height = (h - top - bottom).max(20);
+    MoveWindow((*s).body, shell_x, top, shell, body_height, 1);
     let rect = Rect {
         left: side,
-        top,
+        top: 0,
         // Reserve the 20px thumb, 4px outer inset and at least 12px gap
         // even when the narrow layout uses only 24px on the left.
         right: (shell - side.max(px(s, 36))).max(side + 20),
-        bottom: (h - bottom).max(top + 20),
+        bottom: body_height,
     };
     SendMessageW((*s).body, 0xb3, 0, &rect as *const _ as isize); // EM_SETRECT
+    InvalidateRect((*s).window, ptr::null(), 0);
     MoveWindow((*s).overlay, 0, 0, w, h, 1);
     let pw = px(s, 560).min((w - px(s, 48)).max(px(s, 120)));
     let max_height = (h - px(s, 180)).max(px(s, 116));
@@ -873,7 +878,8 @@ unsafe fn scroll_geometry(s: *mut State) -> (i32, i32, i32, i32) {
     let total = (end.y + pos.y - format.top + px(s, 36)).max(px(s, 36));
     let max = (total - page).max(0);
     let mut r = Rect::default();
-    GetClientRect((*s).body, &mut r);
+    // The thumb's track spans the host, independently of the text viewport.
+    GetClientRect((*s).window, &mut r);
     let track = (r.bottom - px(s, 8)).max(1);
     let th = ((track as i64 * page as i64 / total.max(1) as i64) as i32)
         .max(px(s, 44))

@@ -9,14 +9,17 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import traceback
+import zlib
 import gui_desktop as gui
 from private_desktop import run, verify_desktop, screenshot
 
 send = gui.bind(gui.U, "SendMessageW", C.c_ssize_t, [W.HWND, W.UINT, W.WPARAM, W.LPARAM])
 move = gui.bind(gui.U, "MoveWindow", W.BOOL, [W.HWND, C.c_int, C.c_int, C.c_int, C.c_int, W.BOOL])
 get_client = gui.bind(gui.U, "GetClientRect", W.BOOL, [W.HWND, C.c_void_p])
+get_window = gui.bind(gui.U, "GetWindowRect", W.BOOL, [W.HWND, C.c_void_p])
 client_to_screen = gui.bind(gui.U, "ClientToScreen", W.BOOL, [W.HWND, C.c_void_p])
 
 
@@ -91,6 +94,42 @@ def child(folder, desktop):
         path = folder / f"{name}.png"
         screenshot(window, process.pid, path)
         result["images"].append(str(path))
+        if name in ("long-scrolled", "narrow-wrap-scroll"):
+            # Inspect actual rendered pixels, including the area outside the
+            # formatting rectangle where RichEdit used to leave stale text.
+            png = path.read_bytes()
+            width, height = struct.unpack_from(">II", png, 16)
+            offset, compressed = 8, b""
+            while offset < len(png):
+                length = struct.unpack_from(">I", png, offset)[0]
+                if png[offset + 4:offset + 8] == b"IDAT":
+                    compressed += png[offset + 8:offset + 8 + length]
+                offset += length + 12
+            pixels = zlib.decompress(compressed)
+            stride = width * 3 + 1  # private_desktop.screenshot writes filter 0 RGB
+            assert len(pixels) == stride * height
+            frame, client = (C.c_long * 4)(), (C.c_long * 4)()
+            gui.checked(get_window(window, frame))
+            gui.checked(get_client(window, client))
+            origin = Point(0, 0)
+            gui.checked(client_to_screen(window, C.byref(origin)))
+            dx, dy = origin.x - frame[0], origin.y - frame[1]
+            current = state()
+            body_origin = Point(0, 0)
+            gui.checked(client_to_screen(editor, C.byref(body_origin)))
+            left = body_origin.x - frame[0] + current["formatRect"][0]
+            right = body_origin.x - frame[0] + current["formatRect"][2]
+            top = dy + client[3] - round(48 * current["scale"]) + 4
+            bottom = dy + client[3] - 4
+            count = sum(pixels[y * stride + 1 + x * 3:y * stride + 4 + x * 3] != b"\x20\x20\x20"
+                        for y in range(top, bottom) for x in range(left, right))
+            result["observations"][name + "_bottom_margin_ink"] = count
+            assert count == 0, f"Stale text in bottom margin: {count} pixels ({path})"
+            top_count = sum(pixels[y * stride + 1 + x * 3:y * stride + 4 + x * 3] != b"\x20\x20\x20"
+                            for y in range(dy + 4, body_origin.y - frame[1] - 4)
+                            for x in range(left, right))
+            result["observations"][name + "_top_margin_ink"] = top_count
+            assert top_count == 0, f"Stale text in top margin: {top_count} pixels"
 
     try:
         with (folder / "stdout.txt").open("wb") as out, (folder / "stderr.txt").open("wb") as err:
@@ -129,6 +168,12 @@ def child(folder, desktop):
             origin, host = Point(0, 0), Point(0, 0)
             gui.checked(client_to_screen(editor, C.byref(origin)))
             gui.checked(client_to_screen(window, C.byref(host)))
+            client, viewport = (C.c_long * 4)(), (C.c_long * 4)()
+            gui.checked(get_client(window, client))
+            gui.checked(get_client(editor, viewport))
+            expected_top = round((36 if client[2] <= round(600 * geometry["scale"]) else 60) * geometry["scale"])
+            assert origin.y - host.y == expected_top
+            assert client[3] - (origin.y - host.y + viewport[3]) == round(48 * geometry["scale"])
             text_right = origin.x - host.x + geometry["formatRect"][2]
             gap = geometry["thumbRect"][0] - text_right
             gaps.append({"windowWidth": width, "textRight": text_right,
@@ -221,7 +266,7 @@ def child(folder, desktop):
         result["observations"].update({"wrap_wide": compact(wide), "wrap_narrow": compact(narrow), "wrap_wide_again": compact(wide_again)})
         assert not wide_again["dirty"] and not wide_again["error"]
         result["passed"] = True
-        result["checks"] = ["text and thumb separated at narrow and wide widths", "short text scrollbar hidden", "real wheel scrolls long text", "thumb hit testing",
+        result["checks"] = ["blank top and bottom margins after scrolling", "text and thumb separated at narrow and wide widths", "short text scrollbar hidden", "real wheel scrolls long text", "thumb hit testing",
                             "thumb drag scrolls", "modal hides body and scrollbar", "picker wheel leaves body unchanged",
                             "modal preserves selection and scroll", "short memo hides scrollbar", "resize wrapping updates scroll need"]
     except BaseException:

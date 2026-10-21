@@ -84,7 +84,8 @@ def child(folder, desktop):
         window, editor = first["window"], first["editor"]
         assert first["visible"] and not first["error"], first
         assert first["fontTwips"] == 300 and first["lineSpacingTwips"] == 540 and first["lineRule"] == 4, first
-        assert first["formatRect"][1] == round(60 * first["scale"]), first
+        # Vertical margins belong to the host; the RichEdit viewport starts at 0.
+        assert first["formatRect"][1] == 0, first
         gui.checked(move(window, 0, 0, round(1700 * first["scale"]), 800, True))
         wide = state()
         expected_width = round(1301 * wide["scale"]) - 2 * round(48 * wide["scale"])

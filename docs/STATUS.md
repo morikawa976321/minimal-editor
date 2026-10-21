@@ -1,5 +1,11 @@
 # STATUS · 2026-10-21
 
+## スクロール後に下余白へ残る本文を修正 · 最新
+
+本人の「最後の一文が常にアプリ下部に表示される」報告を再現。RichEditのwindowが上下余白を含む全高を覆い、内部の書式領域だけで余白を作っていたため、スクロール後に領域外の文字が残っていた。本文window自体を上下余白の内側へ縮め、親windowが余白を描く構造へ変更。書式領域は本文windowの高さに一致。見かけの上下余白・本文幅・バーの全高トラックは維持。日常起動先 `build/native-next.exe` を更新済み。通常どおり閉じてWin → minimal-editor → Enterで反映。本人の稼働窓と原稿は操作していない。本人待ちなし。
+
+修正前 `.work/native-scroll-ui-hlaw1nlb/result.json` で下余白に313個の背景色以外のピクセルを検出して失敗。修正後 `.work/native-scroll-ui-41cd8m_9/result.json` は通常幅・狭幅とも上下余白の文字ピクセル0。実PNGも目視確認。4幅で本文windowの上余白60/36・下余白48論理pxとバー間隔を実座標確認、wheel/drag/選択・scroll保持も合格。`.work/native-next-ui-ca25w9ia/result.json`（入力・Undo・保存・改名・保管／復元・再起動・実ランチャ）、`.work/native-picker-ui-grf7yzso/result.json`（両一覧の各100キーで本文paint/layout0・GDI解放・改名）も合格。SHA-256 `9ef7a136657cb36beafd07721da9cb1d6d22e1b53c3f99f833c2ea0873d4e9e5`。
+
 ## スクロールバーと本文の重なりを修正 · 最新
 
 本人の画像報告に対応。本文幅を1301論理pxの外枠へ広げた際、バー位置だけ旧1100px基準が残っていた。両方を共通関数へ統一し、狭幅でもバーと本文の間に12論理px以上を確保。通常幅の本文1205論理pxは維持。日常起動先 `build/native-next.exe` は更新済み。通常どおり窓を閉じてWin → minimal-editor → Enterで反映。本人の稼働窓・原稿は操作していない。本人待ちなし。
