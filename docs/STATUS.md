@@ -1,4 +1,16 @@
-# STATUS · 2026-10-22
+# STATUS · 2026-10-23
+
+## 先頭行の自動命名を反映／Intel One Monoの申告は調査中 · 最新
+
+本人の決定に従い、新規メモは「無題」、本文の最初の改行までを自動名にする。従来の「最初の空でない行」から変更し、先頭行が空なら二行目以降を採らず「無題」。改行前の入力中も保存に伴って追従し、先頭行全体を使う（従来の80文字切り取りを廃止）。前後空白と制御文字の除去は維持。既存・新規の手動名は本文変更で上書きしない。日常版 `build/native-next.exe` に配置済み。
+
+保存／worker試験15件が合格。非表示desktop GUI `.work/native-next-ui-zevms0tt/result.json` で、作成直後の「無題」・空の先頭行・先頭行変更・削除・手動改名後の本文変更・再起動後の両種の名前・保存・Undo・保管／復元・日常ランチャが合格。本人の稼働窓と原稿は操作していない。
+
+その後本人が「フォントがおかしくなった」「intelonemonoになっていない」と報告。**フォントの修正完了とは扱わない。** 今回はフォントソースを変更していないが、更新前後で表示が同じだったとまでは断定しない。日常exeのSHA-256は `c382e7d82bc53bb7a64294624fe09bbcb0710cff38200edef66e13e814bb736e`。現行のMSVC rustcで標準build scriptは成功した（以前のGNU用link回避は今回は不要）。
+
+調査: `.work/native-font-60vdet0f/result.json` で混在本文のLatin／日本語／Latinの各書式を取得。`.work/native-font-bbow3hxp/result.json` では日本語keyboard layout `0x04110411`、WM_CHAR／WM_IME_CHAR、日本語内への英数字挿入、新規メモ後の英数字がIntel One Monoで15実px、日本語はBIZ UDゴシックで25実px（DPI125%）。`.work/native-font-aj7qpxib/partial.json` のGDI実選択fontもIntel One Mono。通常入力と文字通知では報告を再現できていない。ImmGetContextはこのTSF controlでnullとなり、実IMEの確定経路は再現できなかった。手動のIME変換が通ったとは主張しない。最新probeは診断用であり正式な回帰試験や修正の証拠ではない。
+
+次: 本人の不正な英数字が見える画面（本文／新規入力／一覧）を確認し、その経路を再現して修正する。asyncで発生箇所を質問済み。再開時はこの節と `docs/decisions.md` 末尾を読む。本人の画面を取得・操作して調べることはしていない。
 
 ## 日本語キーボードで英数字が BIZ UDGothic になる不具合の修正 · 最新
 

@@ -3,7 +3,7 @@
 //! `catalog.tsv` is strict UTF-8, with these tab-separated lines:
 //! `minimal-editor-native-v1`, `active\t<ID or ->`, then
 //! `memo\t<ID>\t<created milliseconds>\t<0 or 1 archived>\t<title UTF-8 hex or ->`.
-//! A `-` title derives from the first nonempty text line. Text lives in
+//! A `-` title follows the first text line (empty means 無題). Text lives in
 //! `memos/<ID>.txt`. IDs contain only ASCII letters, digits, `-`, `_` (1..=80).
 //! Seeders must publish every text before publishing the catalog, and must not
 //! overwrite an existing store. No automatic recovery ever replaces user data.
@@ -441,17 +441,21 @@ fn validate_title(title: &str) -> Result<(), String> {
 }
 
 fn derived_title(text: &str) -> String {
-    text.lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .map(|line| {
-            line.chars()
-                .filter(|c| !c.is_control())
-                .take(80)
-                .collect::<String>()
-        })
-        .filter(|title| !title.is_empty())
-        .unwrap_or_else(|| "無題".into())
+    // A leading newline is an empty first line, never permission to use a
+    // later paragraph. RichEdit wraps visually without adding a newline.
+    let title: String = text
+        .split(['\r', '\n'])
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect();
+    if title.is_empty() {
+        "無題".into()
+    } else {
+        title
+    }
 }
 
 fn now_ms() -> u64 {
@@ -751,6 +755,61 @@ mod tests {
     }
 
     #[test]
+    fn automatic_title_uses_only_the_first_line() {
+        for (text, expected) in [
+            ("", "無題"),
+            ("先頭の入力中", "先頭の入力中"),
+            ("一行目\n二行目", "一行目"),
+            ("一行目\r\n二行目", "一行目"),
+            ("一行目\r二行目", "一行目"),
+            ("\n二行目", "無題"),
+            ("\r\n二行目", "無題"),
+            (" \t\n二行目", "無題"),
+            ("  一行目  \n二行目", "一行目"),
+        ] {
+            assert_eq!(derived_title(text), expected, "{text:?}");
+        }
+        let long = "長い先頭行📝".repeat(50);
+        assert_eq!(derived_title(&format!("{long}\n二行目")), long);
+    }
+
+    #[test]
+    fn automatic_title_tracks_edits_and_restart_until_manual_rename() {
+        let directory = Temp::new();
+        let id;
+        {
+            let mut store = Store::open(directory.0.clone()).unwrap();
+            assert_eq!(store.list(false)[0].title, "無題");
+            id = store.create().unwrap();
+            let title = |store: &Store| {
+                store.list(false).into_iter().find(|m| m.id == id).unwrap().title
+            };
+            assert_eq!(title(&store), "無題");
+            store.save(&id, "入力中").unwrap();
+            assert_eq!(title(&store), "入力中");
+            store.save(&id, "変更した先頭行\n本文").unwrap();
+            assert_eq!(title(&store), "変更した先頭行");
+            store.save(&id, "\n本文だけ").unwrap();
+            assert_eq!(title(&store), "無題");
+        }
+        {
+            let mut store = Store::open(directory.0.clone()).unwrap();
+            assert_eq!(store.list(false).iter().find(|m| m.id == id).unwrap().title, "無題");
+            store.save(&id, "再開後の先頭行\n本文").unwrap();
+        }
+        {
+            let mut store = Store::open(directory.0.clone()).unwrap();
+            assert_eq!(store.list(false).iter().find(|m| m.id == id).unwrap().title, "再開後の先頭行");
+            store.rename(&id, "手動の名前").unwrap();
+            store.save(&id, "別の先頭行\n本文").unwrap();
+            store.save(&id, "").unwrap();
+        }
+        let store = Store::open(directory.0.clone()).unwrap();
+        assert_eq!(store.list(false).iter().find(|m| m.id == id).unwrap().title, "手動の名前");
+        assert_eq!(store.text(&id).unwrap(), "");
+    }
+
+    #[test]
     fn restart_roundtrip_backup_history_and_manual_title() {
         let directory = Temp::new();
         let id;
@@ -758,7 +817,7 @@ mod tests {
             let mut store = Store::open(directory.0.clone()).unwrap();
             id = store.active().unwrap();
             store.save(&id, "\n 最初の行 \r\n二行目\n").unwrap();
-            assert_eq!(store.list(false)[0].title, "最初の行");
+            assert_eq!(store.list(false)[0].title, "無題");
             store.rename(&id, "手動の名前").unwrap();
             store.save(&id, "本文が変わっても名前は残る\n").unwrap();
             assert_eq!(store.list(false)[0].title, "手動の名前");

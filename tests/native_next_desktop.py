@@ -93,6 +93,7 @@ def child(folder, desktop):
         screenshot(window, process.pid, folder / "body-wide.png")
         gui.checked(move(window, 0, 0, 1100, 800, True))
         initial_id = first["active"]
+        assert next(m for m in first["catalog"] if m["id"] == initial_id)["title"] == "無題"
         text = "自分の言葉で書く。\n余白のある道具。Latin 123。\n" * 500
         started = time.monotonic()
         insert(editor, text)
@@ -119,9 +120,19 @@ def child(folder, desktop):
         second = key(0x4E, 1)
         second_id = second["active"]
         assert second_id != initial_id and second["text"] == ""
+        assert next(m for m in second["catalog"] if m["id"] == second_id)["title"] == "無題"
+        insert(editor, "\n二行目はタイトルにしない")
+        blank_first = state()
+        assert next(m for m in blank_first["catalog"] if m["id"] == second_id)["title"] == "無題"
+        title_text(editor, "先頭行を編集\n二行目はタイトルにしない")
+        auto_named = state()
+        assert next(m for m in auto_named["catalog"] if m["id"] == second_id)["title"] == "先頭行を編集"
+        title_text(editor, "")
+        assert next(m for m in state()["catalog"] if m["id"] == second_id)["title"] == "無題"
         insert(editor, "二つ目のメモ")
         picker = key(0x50, 1)
         assert picker["picker"] == "normal" and len(picker["items"]) == 2
+        assert next(m for m in picker["items"] if m["id"] == second_id)["title"] == "二つ目のメモ"
         send(picker["overlay"], 0x201, 1, (8 << 16) | 8)
         assert state()["picker"] == "normal"
         screenshot(window, process.pid, folder / "picker.png")
@@ -157,6 +168,8 @@ def child(folder, desktop):
         assert archived_picker["picker"] == "archived" and len(archived_picker["items"]) == 1
         restored = key(0x0D)
         assert restored["picker"] is None and restored["active"] == second_id and restored["text"] == "二つ目のメモ"
+        title_text(editor, "本文を変えても手動の名前は残す")
+        assert next(m for m in state()["catalog"] if m["id"] == second_id)["title"] == "名前を変更"
         assert key(0x50, 3)["picker"] == "archived"
         assert key(0x50, 3)["picker"] is None
         literal = "{\\rtf1 これは書式命令ではなく本文。}"
@@ -208,6 +221,8 @@ def child(folder, desktop):
         reopened = launch()
         window, editor = reopened["window"], reopened["editor"]
         assert reopened["active"] == initial_id and reopened["text"] == text + "追記"
+        assert next(m for m in reopened["catalog"] if m["id"] == initial_id)["title"] == "自分の言葉で書く。"
+        assert next(m for m in reopened["archives"] if m["id"] == second_id)["title"] == "名前を変更"
         # External edit conflict retains both external file and unsaved native buffer.
         path.write_text("外部で変更", encoding="utf-8")
         insert(editor, "未保存の追記")
@@ -247,7 +262,8 @@ def child(folder, desktop):
         gui.eventually(lambda: not launched_windows(), "Owned launched editor did not close")
         return {"passed": True, "desktop": desktop, "text_characters": len(text), "insert_and_save_ms": input_ms,
                 "body_memory": body_memory, "checks": ["native input and body Undo", "autosave", "current typography readback",
-                    "new memo", "normal/archive modal", "IME title Enter guard", "rename/cancel", "archive/undo",
+                    "new memo initially untitled", "first-line automatic title and blank-first-line reset", "manual name survives body edits and restart",
+                    "normal/archive modal", "IME title Enter guard", "rename/cancel", "archive/undo",
                     "restore and open", "outside click retained", "literal RTF roundtrip", "forced exit/reopen",
                     "all archived restores read-only body and creates again", "toast keyboard button",
                     "external conflict keeps buffer and recovery", "real launcher visible and same-window reopen"],
