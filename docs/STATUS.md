@@ -1,6 +1,16 @@
 # STATUS · 2026-10-23
 
-## 先頭行の自動命名を反映／Intel One Monoの申告は調査中 · 最新
+## Intel One Monoの不具合は起動中の旧exeで再現／配置済み新版で解消を確認 · 最新
+
+本人のスクリーンショットと「タイトル一覧モーダルは平気だった」「昨日入れた関連コミットが怪しい」を受けて実行中の版を調査。通常sandbox内のGet-Processでは本人のプロセスが列挙されなかったが、権限付きの読取ではPID40724・起動8:04:25を確認。K32GetMappedFileNameWで実際のmapped imageが `build/native-next-retired-66d00df5e957499fb246645bd4f1b3af.exe` と確定した。Process.Pathは元のcanonical名を返すため、それだけでは判別できない。本人の窓へメッセージを送ったり本文・選択・スクロールを操作したりしていない。
+
+同じ旧exeを隔離desktop・別データで起動すると、画像と同じ細い字形を再現。EM_GETLANGOPTIONSは2（昨日の修正の0x82になっていない）。英数字の実runはBIZ UDゴシック、1文字13実px。GDIで実選択したIntel One Monoの15実pxとも異なった。旧版 `.work/native-font-ui-25wsz8gw/result.json` は英数字・数字・記号の5ケースで失敗し、typed-sample.pngで本人画像との字形一致を目視確認。旧版でもメモを開き直すとIntelへ戻るため、入力と再表示は別に検証する必要があった。
+
+既に配置した新版 `build/native-next.exe` は7ケース（新規英数字／日本語直後／空行後／数字／記号／開き直した英数字・数字）がすべてIntel One Mono・15実px、300twips・weight400。EM_GETLANGOPTIONS=130（0x82）。最終 `.work/native-font-ui-car1wlie/result.json` が合格。typed-sample.pngの実画素も旧版と比較して確認。今回は昨日のfont製品コードを撤回・変更せず、配置済み修正の有効性を確認し、`tests/native_font_desktop.py` と通常suiteへの組込みを追加した。先頭行自動命名も配置済みのまま。exeのhashは下の節と同じ。
+
+本人に必要な操作: 現在の窓を通常どおり閉じ、Win→minimal-editor→Enterで開き直す。これで昨日のフォント修正と今日の自動命名の両方を含む新版になる。こちらから本人の窓を閉じない。追加の好み判断はない。もし新版でも問題が残れば、この旧版の再現と混同せず別の経路として調べる。
+
+## 先頭行の自動命名を反映／Intel One Monoの申告は調査中 · 前回の調査
 
 本人の決定に従い、新規メモは「無題」、本文の最初の改行までを自動名にする。従来の「最初の空でない行」から変更し、先頭行が空なら二行目以降を採らず「無題」。改行前の入力中も保存に伴って追従し、先頭行全体を使う（従来の80文字切り取りを廃止）。前後空白と制御文字の除去は維持。既存・新規の手動名は本文変更で上書きしない。日常版 `build/native-next.exe` に配置済み。
 
