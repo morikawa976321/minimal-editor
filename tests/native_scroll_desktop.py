@@ -147,6 +147,12 @@ def child(folder, desktop):
                     return value if value.get("ready") else None
         first = gui.eventually(ready, "Native did not load")
         window, editor, overlay, thumb = first["window"], first["editor"], first["overlay"], first["thumb"]
+
+        def px(logical):
+            # Window sizes are physical pixels; scale them so the layouts under test
+            # (wide vs. narrow) do not depend on the display scale of the machine.
+            return round(logical * first["scale"])
+
         # A single visual line has both boundaries, including within the line.
         for position in (0, 1, len(first["text"])):
             for vk in (0x26, 0x28):
@@ -160,7 +166,7 @@ def child(folder, desktop):
         result["observations"]["boundary_navigation"] = "unchanged caret and text"
         needed = {"bodyScroll", "bodySelection", "bodyVisible", "scrollMax", "thumbVisible", "thumbRect"}
         assert needed <= first.keys(), f"Missing instrumentation: {sorted(needed - first.keys())}"
-        gui.checked(move(window, 0, 0, 1100, 800, True))
+        gui.checked(move(window, 0, 0, px(1100), px(800), True))
         wheel(editor)
         short = state()
         result["observations"]["short_after_wheel"] = compact(short)
@@ -191,8 +197,8 @@ def child(folder, desktop):
         # Compare the real RichEdit formatting area and thumb in host client
         # coordinates. Wide windows previously left the thumb inside the text.
         gaps = []
-        for width in (1700, 460, 1100, 2200):
-            gui.checked(move(window, 0, 0, width, 800, True))
+        for width in (px(1700), px(460), px(1100), px(2200)):
+            gui.checked(move(window, 0, 0, width, px(800), True))
             wheel(editor)
             geometry = state()
             origin, host = Point(0, 0), Point(0, 0)
@@ -210,9 +216,9 @@ def child(folder, desktop):
                          "thumbLeft": geometry["thumbRect"][0], "gap": gap})
             result["observations"]["text_thumb_gaps"] = gaps
             assert geometry["thumbVisible"] and gap >= int(12 * geometry["scale"]) - 1, gaps
-            if width == 1700:
+            if width == px(1700):
                 picture("wide-text-scroll-gap")
-        gui.checked(move(window, 0, 0, 1100, 800, True))
+        gui.checked(move(window, 0, 0, px(1100), px(800), True))
         long = state()
         before = long["bodyScroll"][1]
         wheel(editor)
@@ -283,13 +289,13 @@ def child(folder, desktop):
         wheel(editor)
         wide = state()
         assert wide["scrollMax"] == 0 and not wide["thumbVisible"], compact(wide)
-        gui.checked(move(window, 0, 0, 460, 620, True))
+        gui.checked(move(window, 0, 0, px(460), px(620), True))
         narrow_before = state()
         assert narrow_before["scrollMax"] > 0, compact(narrow_before)
         wheel(editor)
         narrow = until(lambda s: s["bodyScroll"][1] > 0 and s["thumbVisible"], "Wrapped narrow body did not scroll/reveal scrollbar")
         picture("narrow-wrap-scroll")
-        gui.checked(move(window, 0, 0, 1100, 800, True))
+        gui.checked(move(window, 0, 0, px(1100), px(800), True))
         wheel(editor)
         wide_again = state()
         assert wide_again["scrollMax"] == 0 and not wide_again["thumbVisible"], compact(wide_again)
