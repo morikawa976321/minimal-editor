@@ -1,4 +1,11 @@
-# STATUS · 2026-10-21
+# STATUS · 2026-10-22
+
+## 日本語キーボードで英数字が BIZ UDGothic になる不具合の修正 · 最新
+
+日本語キーボード（IME）で打った英数字、および日本語の直後に打った英数字が、Intel One Mono ではなく BIZ UDGothic の細い字形になっていた。原因は RichEdit の `IMF_AUTOFONT` 単独設定（`EM_SETLANGOPTIONS` = 2）で、直前の日本語ランの書式（BIZ UDGothic）を英数字が引き継ぐこと。`EM_SETLANGOPTIONS` を `IMF_AUTOFONT | IMF_DUALFONT`（0x82）、本文・タイトルの基準書式の文字セットを 1（DEFAULT）から 0（ANSI）へ変更。実測（日本語キーボード＋入力切替通知で、`n` の送り幅）は修正前の 12→10px が、修正後は 12px のまま。全角は 20px。`tests/native_next_desktop.py` 合格。実際の IME 変換入力は本人の確認が必要。`build/native-next.exe` を差し替え済み（旧版は `build/native-next-retired-6f30920b…exe`）。
+
+ビルド注意: このPCの既定 gnu ツールチェーンは `libdwmapi.a` を持たず `scripts/build-native.ps1` が失敗する。scoop の gcc にある同ファイルだけを別フォルダへ写し、`rustc … -L <そのフォルダ>` で通した。スクリプトは未変更。
+
 
 ## 上下端のカーソル移動による警告音を抑止 · 最新
 
@@ -48,7 +55,7 @@ RichEditのSES_ALLOWBEEPSをクリアするだけの案は、実測で効果が�
 
 `scripts/preview-native-font.ps1`で3候補を逐次ビルドして専用desktop撮影。最終 `.work/native-font-preview-yodsi5nm/result.json` は、本文／改名の300twipsと各400/500/700読戻し成功、400/500の5画面一致、400/700の5画面不一致。caret点滅をフォント差と混同しないよう、本人の画面とは無関係なテストRichEditだけcaretを隠して撮影した。HTMLの切替15画像参照と選択結果も実行確認。本人の原稿・稼働窓・日常exeは変更なし。
 
-## 全体のフォント統一・実画面プレビュー・左上のアプリ名非表示 · 最新
+## （2026-10-19）全体のフォント統一・実画面プレビュー・左上のアプリ名非表示
 
 ネイティブ版の本文／通常・保管一覧／改名／通知・エラーを、英数字Intel One Mono・日本語BIZ UDGothic・20論理pxへ統一。左上のアプリ名とアイコンは非表示。標準の移動・サイズ変更・右上ボタン、Alt+Tab用window名は維持。日常起動版へ配置済み。本人の窓と原稿は操作していない。通常どおり閉じてWin → minimal-editor → Enterで反映する。
 

@@ -1743,7 +1743,10 @@ unsafe fn configure_rich(_s: *mut State, h: Hwnd, body: bool) -> Result<(), Stri
     SendMessageW(h, 0x445, 0, 1); // ENM_CHANGE
                                   // RichEdit's script association chooses the Japanese face without rewriting
                                   // user text into individual formatted runs or replacing its IME handling.
-    SendMessageW(h, 0x478, 0, 2); // EM_SETLANGOPTIONS IMF_AUTOFONT, no keyboard switching.
+    // IMF_AUTOFONT alone makes Latin typed after Japanese (or under a Japanese
+    // keyboard/IME) inherit BIZ UDGothic's narrow Latin glyphs. IMF_DUALFONT keeps the
+    // ANSI face for Latin runs and the associated face for Japanese. No keyboard switching.
+    SendMessageW(h, 0x478, 0, 0x82); // EM_SETLANGOPTIONS IMF_AUTOFONT | IMF_DUALFONT
     let mut cf: CharFormat = mem::zeroed();
     cf.size = mem::size_of::<CharFormat>() as u32;
     cf.mask = 0xec600000; // SIZE FACE COLOR SPACING BACKCOLOR CHARSET
@@ -1752,7 +1755,7 @@ unsafe fn configure_rich(_s: *mut State, h: Hwnd, body: bool) -> Result<(), Stri
     cf.spacing = if body { 3 } else { 0 };
     cf.color = FG;
     cf.bg = if body { BG } else { SELECTED };
-    cf.charset = 1;
+    cf.charset = 0; // ANSI: the dual-font Latin face; DEFAULT_CHARSET lets Latin fall to 11px metrics.
     let face = wide("Intel One Mono");
     cf.face[..face.len()].copy_from_slice(&face);
     SendMessageW(h, EM_SETCHARFORMAT, 0, &cf as *const _ as isize);
@@ -1811,7 +1814,7 @@ unsafe fn uniform_body_format(s: *mut State) {
     cf.spacing = 3;
     cf.color = FG;
     cf.bg = BG;
-    cf.charset = 1;
+    cf.charset = 0;
     let face = wide("Intel One Mono");
     cf.face[..face.len()].copy_from_slice(&face);
     SendMessageW(h, EM_SETCHARFORMAT, 4, &cf as *const _ as isize);
