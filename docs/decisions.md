@@ -753,3 +753,18 @@ astra の判断: 後半のキーは前半と対になる↓と解釈する。既
 ### 本人待ち
 
 追加判断なし。通常どおり閉じ、Win→minimal-editor→Enterで開き直すと更新が反映される。
+
+## 2026-10-25 · 本人の決定: アプリ内の警告音をすべてなくす
+
+本人の原文:
+> 一番下の行の一番右端でさらに下カーソルを押すとエラー音が鳴る。このアプリ内ではいかなる場合でもエラー音を鳴らさないようにしてほしい
+
+astra の判断: キー・位置ごとの抑止では要求を満たさないため、RichEdit自体の警告音許可を無効にする。[ITextServices::OnTxPropertyBitsChange](https://learn.microsoft.com/en-us/windows/win32/api/textserv/nf-textserv-itextservices-ontxpropertybitschange) のTXTBIT_ALLOWBEEPをfalseへ変更。定数0x800とvtableの順序はこのPCのWindows SDK TextServ.hと[Microsoftの公開ヘッダー](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/TextServ.h)で照合し、EM_GETOLEINTERFACE→QueryInterfaceで実取得・設定に成功した。一時的な小実験でも7回→0回を測定してから本文・タイトルへ適用。COM参照は成功・失敗経路とも解放し、設定失敗時は無音化できたと装って続行せずエラーを表示する。
+
+前回の末尾判定はGetWindowTextLengthWのCRLFを含む長さとRichEdit内部の選択位置を比較していた。今回の再現では20対18となる。位置の回帰試験が通っても音が消えた証拠にはならず、一行しか調べていない音試験で複数行にも成立すると扱ったのが見落とし。無音化によりこの長さ比較によるガード自体を撤去できる。先頭行↑と最終行↓の移動仕様、選択・修飾キー・IMEの標準操作は維持する。
+
+そのほかのアプリ内経路も整理。WM_SYSCHARの未割当Alt文字を無音で消費し、[WM_MENUCHAR](https://learn.microsoft.com/en-us/windows/win32/menurc/wm-menuchar)は警告音を出すMNC_IGNOREではなくMNC_CLOSEを返す。Alt+Spaceのシステムメニュー経路は残す。起動失敗では従来のエラーアイコン付きMessageBoxを使わず、静的テキストとOKだけの標準ダイアログを構築する。エラーを隠す・OS全体のサウンドを変更する・入力DLLのimportを書き換える製品実装は採らない。import書換えは自分の隔離試験processだけの計測に限定する。覆る条件は本人が特定の通知音を希望すること。検証結果・限界はSTATUS参照。
+
+### 本人待ち
+
+追加判断なし。通常どおり閉じ、Win→minimal-editor→Enterで開き直すと更新が反映される。

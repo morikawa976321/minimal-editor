@@ -4,6 +4,34 @@ pub type Handle = *mut c_void;
 pub type Hwnd = Handle;
 pub type WndProc = Option<unsafe extern "system" fn(Hwnd, u32, usize, isize) -> isize>;
 #[repr(C)]
+pub struct Guid {
+    pub data1: u32,
+    pub data2: u16,
+    pub data3: u16,
+    pub data4: [u8; 8],
+}
+#[repr(C)]
+pub struct Unknown {
+    pub vtable: *const UnknownVtable,
+}
+#[repr(C)]
+pub struct UnknownVtable {
+    pub query_interface: unsafe extern "system" fn(*mut Unknown, *const Guid, *mut *mut c_void) -> i32,
+    pub add_ref: unsafe extern "system" fn(*mut Unknown) -> u32,
+    pub release: unsafe extern "system" fn(*mut Unknown) -> u32,
+}
+#[repr(C)]
+pub struct TextServices {
+    pub vtable: *const TextServicesVtable,
+}
+#[repr(C)]
+pub struct TextServicesVtable {
+    pub unknown: UnknownVtable,
+    // TextServ.h: TxSendMessage through TxGetDropTarget (vtable slots 3..18).
+    pub unused: [usize; 16],
+    pub on_property_bits_change: unsafe extern "system" fn(*mut TextServices, u32, u32) -> i32,
+}
+#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct Point {
     pub x: i32,
@@ -172,6 +200,8 @@ pub struct EditStream {
 // The SDK's C++ base structure and Rust's flattened repr(C) differ unless its
 // tail padding is explicit: see Microsoft windows-rs CHARFORMAT2W::Base.
 const _: () = {
+    assert!(std::mem::size_of::<Guid>() == 16);
+    assert!(std::mem::offset_of!(TextServicesVtable, on_property_bits_change) == 19 * std::mem::size_of::<usize>());
     assert!(std::mem::size_of::<TextMetric>() == 60);
     assert!(std::mem::size_of::<CharFormat>() == 116);
     assert!(std::mem::offset_of!(CharFormat, weight) == 92);
@@ -249,7 +279,9 @@ extern "system" {
     pub fn DrawTextW(dc: Handle, text: *const u16, len: i32, r: *mut Rect, flags: u32) -> i32;
     pub fn SetTimer(h: Hwnd, id: usize, ms: u32, proc: Handle) -> usize;
     pub fn KillTimer(h: Hwnd, id: usize) -> i32;
-    pub fn MessageBoxW(h: Hwnd, text: *const u16, title: *const u16, kind: u32) -> i32;
+    pub fn DialogBoxIndirectParamW(instance: Handle, template: *const c_void, owner: Hwnd,
+                                  proc: WndProc, param: isize) -> isize;
+    pub fn EndDialog(h: Hwnd, result: isize) -> i32;
     pub fn GetScrollInfo(h: Hwnd, bar: i32, info: *mut ScrollInfo) -> i32;
     pub fn SetCapture(h: Hwnd) -> Hwnd;
     pub fn ReleaseCapture() -> i32;

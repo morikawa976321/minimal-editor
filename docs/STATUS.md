@@ -1,6 +1,18 @@
 # STATUS · 2026-10-25
 
-## 先頭行の↑で行頭、最終行の↓で行末へ移動 · 最新
+## アプリ全体で警告音を出さない · 最新
+
+本人の「一番下の行の一番右端でさらに下カーソルを押すとエラー音」「このアプリ内ではいかなる場合でもエラー音を鳴らさない」に対応。複数行の実末尾は選択位置18、GetWindowTextLengthW/WM_GETTEXTLENGTHはCRLF展開で20となり、前回の末尾ガードが通らずEndで警告音が出ていた。一行だけの警告音測定ではこの差を見落とした。
+
+本文・タイトル両方のRichEditで、標準ITextServices::OnTxPropertyBitsChangeのTXTBIT_ALLOWBEEPをfalseにし、入力エンジン全体を無音化。ホストのSES_ALLOWBEEPS/SES_BEEPONMAXTEXTもクリア。キーごとの消音ガードは削除し、先頭行↑→Home／最終行↓→Endの移動仕様は維持。未割当Alt文字とメニューの不一致文字も音を出さず処理する（Alt+Spaceは維持）。起動失敗のMessageBoxを、音を伴わない静的テキスト＋OKの標準ダイアログへ置換。保存エラー等の表示は維持し、Windowsや他アプリの音量・設定・DLLファイルは変更しない。
+
+日常起動先 `build/native-next.exe` は更新済み（SHA-256 `1b1962511adedbf7f453ce994aa0e3d1d59842e4c5788b86d434f28e5b4b4faf`）。現在の窓を通常どおり閉じ、Win→minimal-editor→Enterで開き直すと反映する。本人の稼働窓・原稿は操作していない。追加の本人待ちなし。
+
+検証: 修正前 `.work/native-silence-ui-oequ280i/result.json` は53ケースでMessageBeep95回（複数行末尾の↓10連打で10回）。修正後は追加のCtrl+Z/Y文字経路を含む57ケースで0回。最終 `.work/native-silence-ui-23n4vvis/result.json` は上下左右/Home/End/PageUp/PageDown・削除・Undo/Redo・一行/複数行/空本文・絵文字・読取専用・合成IME通知・タイトル文字数上限が合格。自分の隔離試験process内のmsftedit importだけをカウンターに置き換えた測定であり、製品にはこの計測処理を含めない。起動失敗は別の試験processを停止状態で生成し、再開前からそのPIDだけのEVENT_SYSTEM_SOUNDを監視。ダイアログ表示・OK終了が合格、音イベント0件。`startup-error.png` も目視確認。実音録音・物理IME候補変換の自動検証とは区別する。
+
+`scripts/test-native.ps1` 全体が合格（保存worker15、移行16、Node7、入力/保存/Undo・font7ケース・一覧・スクロール・消音・非同期保存・ヘッドレス比較）。ログ `.work/silence-suite.log`。入力 `.work/native-next-ui-bwramu5l/result.json`、font `.work/native-font-ui-7lhc6q71/result.json`、scroll `.work/native-scroll-ui-iwdmp9bv/result.json`、async `.work/native-async-ui-jh3tghe3/result.json`。新しい音回帰試験 `tests/native_silence_desktop.py` は通常suiteに組込み済み。
+
+## 先頭行の↑で行頭、最終行の↓で行末へ移動 · 前回
 
 本人の依頼に従い、これまで警告音を抑えるため無処理にしていた先頭／末尾表示行の上下キーを、Home／End相当へ変更。既に文書の先頭／末尾なら無処理のままにして警告音を防ぐ。折返しを含む表示行で判定し、選択範囲あり・Shift/Ctrl/Altあり・IME変換中は従来の標準処理を維持。本文とタイトル入力欄の共通処理に適用。日常起動先 `build/native-next.exe` へ配置済み。通常どおり閉じ、Win→minimal-editor→Enterで開き直すと反映する。本人の稼働窓・原稿は操作していない。追加の本人待ちなし。
 

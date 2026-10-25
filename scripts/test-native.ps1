@@ -28,6 +28,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Native picker paint tests failed' }
     & $python tests/native_scroll_desktop.py
     if ($LASTEXITCODE -ne 0) { throw 'Native wheel and scrollbar tests failed' }
+    & $python tests/native_silence_desktop.py
+    if ($LASTEXITCODE -ne 0) { throw 'Native warning-sound tests failed' }
     & $python tests/native_async_desktop.py
     if ($LASTEXITCODE -ne 0) { throw 'Asynchronous native GUI tests failed' }
     & node tests/native_comparison_ui.mjs

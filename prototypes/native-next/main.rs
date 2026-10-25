@@ -3,6 +3,7 @@
 #![windows_subsystem = "windows"]
 #![allow(non_snake_case)]
 mod store;
+mod error_dialog;
 mod win;
 mod worker;
 use std::{
@@ -1372,9 +1373,8 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
     } else {
         (*s).title_proc
     };
-    // RichEdit beeps on Up/Down beyond the first/last visual line even with
-    // SES_ALLOWBEEPS cleared. Move to that line's start/end instead. Selections,
-    // modified navigation and IME candidate keys retain native handling.
+    // At the outer visual rows, Up/Down moves to that line's start/end.
+    // Selections, modified navigation and IME candidate keys retain native handling.
     let mut native_key = w;
     if m == WM_KEYDOWN
         && (w == 0x26 || w == 0x28)
@@ -1387,14 +1387,8 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
             let line = SendMessageW(h, 0x436, 0, selection.min as isize); // EM_EXLINEFROMCHAR
             let lines = SendMessageW(h, 0xba, 0, 0); // EM_GETLINECOUNT (includes wrapping)
             if w == 0x26 && line == 0 {
-                if selection.min == 0 {
-                    return 0;
-                }
                 native_key = 0x24; // Home
             } else if w == 0x28 && line == lines - 1 {
-                if selection.min == GetWindowTextLengthW(h) {
-                    return 0;
-                }
                 native_key = 0x23; // End
             }
         }
@@ -1614,6 +1608,8 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
         return DefWindowProcW(h, m, w, l);
     }
     match m {
+        0x106 if w != 0x20 => 0, // WM_SYSCHAR: silence unassigned Alt characters; keep Alt+Space.
+        0x120 => 1 << 16, // WM_MENUCHAR / MNC_CLOSE: close an unmatched menu silently.
         0x20a => {
             if (*s).picker.is_some() {
                 SendMessageW((*s).overlay, m, w, l);
@@ -1740,6 +1736,35 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
         _ => DefWindowProcW(h, m, w, l),
     }
 }
+unsafe fn silence_rich(h: Hwnd) -> Result<(), String> {
+    // EM_SETEDITSTYLE alone leaves RichEdit's text engine beeping on this PC.
+    // Disable the engine property through its standard ITextServices interface.
+    // This covers all native editing/IME paths, rather than filtering invalid keys.
+    SendMessageW(h, 0x4cc, 0, 0x102); // Clear SES_ALLOWBEEPS | SES_BEEPONMAXTEXT.
+    let mut ole: *mut Unknown = ptr::null_mut();
+    if SendMessageW(h, 0x43c, 0, &mut ole as *mut _ as isize) == 0 || ole.is_null() {
+        return Err("入力欄の警告音を無効にできません (IRichEditOle)".into());
+    }
+    let iid = Guid {
+        data1: 0x8d33f740,
+        data2: 0xcf58,
+        data3: 0x11ce,
+        data4: [0xa8, 0x9d, 0x00, 0xaa, 0x00, 0x6c, 0xad, 0xc5],
+    };
+    let mut service = ptr::null_mut();
+    let hr = ((*(*ole).vtable).query_interface)(ole, &iid, &mut service);
+    ((*(*ole).vtable).release)(ole);
+    if hr < 0 || service.is_null() {
+        return Err(format!("入力欄の警告音を無効にできません (ITextServices: {hr:#x})"));
+    }
+    let service = service as *mut TextServices;
+    let hr = ((*(*service).vtable).on_property_bits_change)(service, 0x800, 0); // TXTBIT_ALLOWBEEP
+    ((*(*service).vtable).unknown.release)(service as *mut Unknown);
+    if hr < 0 {
+        return Err(format!("入力欄の警告音を無効にできません (TXTBIT_ALLOWBEEP: {hr:#x})"));
+    }
+    Ok(())
+}
 unsafe fn configure_rich(_s: *mut State, h: Hwnd, body: bool) -> Result<(), String> {
     // The system RichEdit rejects paragraph spacing in TM_PLAINTEXT (verified).
     // Use its richer layout engine for the body, while plain Unicode input and
@@ -1798,7 +1823,7 @@ unsafe fn configure_rich(_s: *mut State, h: Hwnd, body: bool) -> Result<(), Stri
     if !body {
         SendMessageW(h, 0x435, 0, 400);
     }
-    Ok(())
+    silence_rich(h)
 }
 unsafe fn uniform_body_format(s: *mut State) {
     // WM_SETTEXT resets paragraph formatting. Apply the single document style
@@ -2212,12 +2237,7 @@ fn main() {
                 let mut startup: StartupInfo = mem::zeroed();
                 GetStartupInfoW(&mut startup);
                 if !(startup.flags & 1 != 0 && startup.show == 0) {
-                    MessageBoxW(
-                        ptr::null_mut(),
-                        wide(&message).as_ptr(),
-                        wide("minimal-editor · Native").as_ptr(),
-                        0x10,
-                    );
+                    error_dialog::show(&message);
                 }
             }
         }
