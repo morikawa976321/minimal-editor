@@ -42,8 +42,9 @@ def child(folder, desktop):
     data, report = folder / "data", folder / "state.json"
     (data / "memos").mkdir(parents=True)
     texts = {"short": "短い本文。", "long": (("日本語の長い文章を書く。Latin 123。" * 8 + "\n") * 700), "wrap": "あ" * 300}
+    texts.update({"edges": "先頭あいう\n中間かきく\n最終さしす", "empty": ""})
     lines = ["minimal-editor-native-v1", "active\tshort"]
-    for i, memo_id in enumerate(["short", "long", "wrap"] + [f"extra{j:02}" for j in range(37)]):
+    for i, memo_id in enumerate(list(texts) + [f"extra{j:02}" for j in range(37)]):
         title = f"メモ {memo_id}"
         lines.append(f"memo\t{memo_id}\t{1000 + i}\t0\t{title.encode('utf-8').hex()}")
         (data / "memos" / f"{memo_id}.txt").write_text(texts.get(memo_id, title), encoding="utf-8")
@@ -161,9 +162,22 @@ def child(folder, desktop):
                 for _ in range(5):
                     send(editor, 0x100, vk, 0)
                 after = state()
-                assert after["bodySelection"] == before["bodySelection"]
+                target = 0 if vk == 0x26 else len(first["text"])
+                assert after["bodySelection"] == [target, target], compact(after)
                 assert after["text"] == before["text"]
-        result["observations"]["boundary_navigation"] = "unchanged caret and text"
+        result["observations"]["boundary_navigation"] = "Up to start / Down to end; repeated keys and text preserved"
+        for memo_id, cases in (
+            ("edges", ((3, 0x26, 0), (len(texts["edges"]) - 3, 0x28, len(texts["edges"])))),
+            ("empty", ((0, 0x26, 0), (0, 0x28, 0))),
+        ):
+            opened = open_memo(memo_id)
+            for position, vk, target in cases:
+                send(editor, 0xB1, position, position)
+                send(editor, 0x100, vk, 0)
+                after = state()
+                assert after["bodySelection"] == [target, target], compact(after)
+                assert after["text"] == opened["text"] and not after["dirty"]
+        open_memo("short")
         needed = {"bodyScroll", "bodySelection", "bodyVisible", "scrollMax", "thumbVisible", "thumbRect"}
         assert needed <= first.keys(), f"Missing instrumentation: {sorted(needed - first.keys())}"
         gui.checked(move(window, 0, 0, px(1100), px(800), True))
@@ -175,6 +189,15 @@ def child(folder, desktop):
 
         long = open_memo("long")
         assert long["scrollMax"] > 0 and long["bodyVisible"], compact(long)
+        # First and last rows of a multiline document; the final row is empty.
+        for position, vk, target in ((3, 0x26, 0), (len(long["text"]), 0x28, len(long["text"]))):
+            send(editor, 0xB1, position, position)
+            send(editor, 0x100, vk, 0)
+            after = state()
+            assert after["bodySelection"] == [target, target], compact(after)
+            assert after["text"] == long["text"]
+        send(editor, 0xB1, 0, 0)
+        send(editor, 0xB7, 0, 0)  # EM_SCROLLCARET: reset viewport for normal arrows.
         send(window, 0x113, 3, 0)  # Deliver the existing hide timer without sleeping.
         for vk in (0x27, 0x25, 0x28, 0x26):  # Right, left, down, up within view.
             before_key = state()
@@ -292,6 +315,19 @@ def child(folder, desktop):
         gui.checked(move(window, 0, 0, px(460), px(620), True))
         narrow_before = state()
         assert narrow_before["scrollMax"] > 0, compact(narrow_before)
+        # One logical line wrapping into several visual rows: only the outer
+        # visual rows remap, and Down on the first row remains vertical.
+        send(editor, 0xB1, 3, 3)
+        send(editor, 0x100, 0x26, 0)
+        assert state()["bodySelection"] == [0, 0]
+        send(editor, 0x100, 0x28, 0)
+        inside = state()["bodySelection"][0]
+        assert 0 < inside < len(texts["wrap"])
+        send(editor, 0xB1, len(texts["wrap"]) - 3, len(texts["wrap"]) - 3)
+        send(editor, 0x100, 0x28, 0)
+        assert state()["bodySelection"] == [len(texts["wrap"]), len(texts["wrap"])]
+        send(editor, 0xB1, 0, 0)
+        send(editor, 0xB7, 0, 0)
         wheel(editor)
         narrow = until(lambda s: s["bodyScroll"][1] > 0 and s["thumbVisible"], "Wrapped narrow body did not scroll/reveal scrollbar")
         picture("narrow-wrap-scroll")
@@ -302,7 +338,7 @@ def child(folder, desktop):
         result["observations"].update({"wrap_wide": compact(wide), "wrap_narrow": compact(narrow), "wrap_wide_again": compact(wide_again)})
         assert not wide_again["dirty"] and not wide_again["error"]
         result["passed"] = True
-        result["checks"] = ["arrows reveal thumb only when viewport scrolls", "blank top and bottom margins after scrolling", "text and thumb separated at narrow and wide widths", "short text scrollbar hidden", "real wheel scrolls long text", "thumb hit testing",
+        result["checks"] = ["boundary arrows move to line start/end including wrapped and empty lines", "arrows reveal thumb only when viewport scrolls", "blank top and bottom margins after scrolling", "text and thumb separated at narrow and wide widths", "short text scrollbar hidden", "real wheel scrolls long text", "thumb hit testing",
                             "thumb drag scrolls", "modal hides body and scrollbar", "picker wheel leaves body unchanged",
                             "modal preserves selection and scroll", "short memo hides scrollbar", "resize wrapping updates scroll need"]
     except BaseException:

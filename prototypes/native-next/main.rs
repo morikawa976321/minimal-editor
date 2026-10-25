@@ -1373,8 +1373,9 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
         (*s).title_proc
     };
     // RichEdit beeps on Up/Down beyond the first/last visual line even with
-    // SES_ALLOWBEEPS cleared. Consume only the native no-op case; selections,
-    // modified navigation and IME candidate keys must retain native handling.
+    // SES_ALLOWBEEPS cleared. Move to that line's start/end instead. Selections,
+    // modified navigation and IME candidate keys retain native handling.
+    let mut native_key = w;
     if m == WM_KEYDOWN
         && (w == 0x26 || w == 0x28)
         && !(*s).composing
@@ -1385,8 +1386,16 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
         if selection.min == selection.max {
             let line = SendMessageW(h, 0x436, 0, selection.min as isize); // EM_EXLINEFROMCHAR
             let lines = SendMessageW(h, 0xba, 0, 0); // EM_GETLINECOUNT (includes wrapping)
-            if (w == 0x26 && line == 0) || (w == 0x28 && line == lines - 1) {
-                return 0;
+            if w == 0x26 && line == 0 {
+                if selection.min == 0 {
+                    return 0;
+                }
+                native_key = 0x24; // Home
+            } else if w == 0x28 && line == lines - 1 {
+                if selection.min == GetWindowTextLengthW(h) {
+                    return 0;
+                }
+                native_key = 0x23; // End
             }
         }
     }
@@ -1404,7 +1413,7 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
     if track_scroll {
         SendMessageW(h, EM_GETSCROLLPOS, 0, &mut before_scroll as *mut _ as isize);
     }
-    let result = CallWindowProcW(original, h, m, w, l);
+    let result = CallWindowProcW(original, h, m, native_key, l);
     if m == 0x10e {
         (*s).composing = false;
         if h == (*s).body {

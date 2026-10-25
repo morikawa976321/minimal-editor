@@ -1,4 +1,10 @@
-# STATUS · 2026-10-23
+# STATUS · 2026-10-25
+
+## 先頭行の↑で行頭、最終行の↓で行末へ移動 · 最新
+
+本人の依頼に従い、これまで警告音を抑えるため無処理にしていた先頭／末尾表示行の上下キーを、Home／End相当へ変更。既に文書の先頭／末尾なら無処理のままにして警告音を防ぐ。折返しを含む表示行で判定し、選択範囲あり・Shift/Ctrl/Altあり・IME変換中は従来の標準処理を維持。本文とタイトル入力欄の共通処理に適用。日常起動先 `build/native-next.exe` へ配置済み。通常どおり閉じ、Win→minimal-editor→Enterで開き直すと反映する。本人の稼働窓・原稿は操作していない。追加の本人待ちなし。
+
+修正前 `.work/native-scroll-ui-1f_cu0sw/result.json` で新しい移動仕様の不一致を確認。最終 `.work/native-scroll-ui-uzulaua6/result.json` で一行・複数行・空本文・末尾空行・折返し・連打・通常矢印・スクロール・一覧復帰が合格。`.work/native-next-ui-umaegq7v/result.json` で入力・保存・Undo・改名・IME確定ガード・保管／復元・再起動・実ランチャも合格。既存の一時probeによる自分の隔離試験processだけのMessageBeep測定は、最初のHome/Endへの単純置換で12回、端の無処理を加えた最終 `.work/native-scroll-ui-n75bvbhq/result.json` で18操作すべて0回。音声録音や実IME候補操作の自動検証とは区別する。
 
 ## Intel One Monoの不具合は起動中の旧exeで再現／配置済み新版で解消を確認 · 最新
 
