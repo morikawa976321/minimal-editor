@@ -95,3 +95,5 @@
 - 2026-10-25: 本人の再申告を複数行で再現。RichEdit選択位置18に対しWM_GETTEXTLENGTHはCRLFを含む20で、前回の末尾ガードが成立しない。一行だけの消音測定を全体の結論に広げたのが誤り。SES_ALLOWBEEPSだけでなくITextServicesのTXTBIT_ALLOWBEEPを直接無効にし、修正前53ケース95回／最終57ケース0回を測定。起動失敗も無音の標準ダイアログへ変更し実画像確認。空きRAM10,623,430,656 bytesを確認し、全native suiteを逐次実行した。
 - 2026-10-26: IME配色は旧API・テーマ指定・CFU_INVERTの反転・TSFの青を混同しない。Claude sonnetの第二意見はwindowlessホストを推奨したが、親は変更範囲を抑えるprocess内GetSysColor差し替えを試作検証して選択。実描画の青2735px→0、OS色不変、全suiteを確認した一方、TSF process限定activateが成功してもKeyDownは未処理で実IME変換は未検証。試験コードのimport時実行、GUID alignment、選択中のIME開始が選択を置換する点も修正し、合成通知と実候補変換の差を本人待ちへ明記。空きRAM12,588,040,192 bytesを確認して逐次実施した。
 - 2026-10-26: 本人の「治ってる。」で実利用の青背景解消を確認。合成通知だけの自動検証と本人確認を分けて記録し、候補操作の全経路を試験済みへ拡張せず本人待ちを解消した。
+
+- 2026-10-26: アイコン相談は形の好みを推測で確定せず、SVG3案と24/32 CSS pxを並べた単一HTMLを作成。5つの選択結果を非表示Edgeで確認しPNGを目視確認。画像生成skillを読んだが、単純な図形はSVG向きとの適用範囲に従い画像生成APIは使わなかった。CIMのRAM読取は拒否されたのでnode os.freememで10,886,656,000 bytesを取得。CDPのlocalhost接続もsandboxで拒否されたため、非表示確認だけを権限付きで実行した。

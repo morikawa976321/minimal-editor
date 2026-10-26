@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>minimal-editor · アイコン案</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#181818;color:#dededb;font:16px/1.7 'BIZ UDGothic','Yu Gothic',sans-serif}main{max-width:1020px;margin:58px auto;padding:0 30px}h1{font-size:22px;font-weight:400;margin:0 0 38px}h2{font-size:17px;font-weight:400;margin:22px 0 6px}p{color:#aaa;font-size:13px;margin:0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:38px}.large{height:190px;display:grid;place-items:center;background:#202020;border-radius:6px}.large svg{width:128px;height:128px}.actual{display:flex;align-items:center;gap:23px;height:64px;margin-top:14px;padding:0 22px;background:#303030;border-radius:4px}.actual span{color:#999;font-size:12px}.actual svg{width:24px;height:24px}.actual svg:last-child{width:32px;height:32px}button{cursor:pointer;color:#ddd;background:#303030;border:0;border-radius:4px;font:inherit;padding:9px 17px}button:hover,button:focus-visible{background:#424242;outline:2px solid #999;outline-offset:3px}button[aria-pressed=true]{background:#ddd;color:#181818}.pick{margin-top:22px}.other{margin-top:34px;display:flex;gap:14px}textarea{margin-top:24px;width:100%;height:80px;resize:none;background:#222;color:#ddd;border:0;padding:16px;font:14px/1.7 'BIZ UDGothic',sans-serif}footer{margin-top:15px;color:#888;font-size:12px}.defs{position:absolute;width:0;height:0;overflow:hidden}@media(max-width:680px){main{margin:28px auto}.grid{grid-template-columns:1fr}.large{height:150px}.other{flex-wrap:wrap}}
+</style>
+<svg class="defs" xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="a" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#282828"/><g fill="#e7e5df"><rect x="7" y="8" width="18" height="2.5" rx=".5"/><rect x="7" y="14.5" width="14" height="2.5" rx=".5"/><rect x="7" y="21" width="6" height="2.5" rx=".5"/><rect x="16" y="19.5" width="2" height="5.5" rx=".3"/></g></symbol>
+<symbol id="b" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#282828"/><path d="M9 5h11l4 4v18H9z" fill="#e7e5df"/><path d="M20 5v5h4" fill="#999891"/><rect x="12" y="20" width="8" height="2" rx=".4" fill="#282828"/></symbol>
+<symbol id="c" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#282828"/><path d="M6.5 23V11m0 5c0-6.7 9-6.7 9 0v7-7c0-6.7 9-6.7 9 0v7" fill="none" stroke="#e7e5df" stroke-width="2.8" stroke-linecap="square" stroke-linejoin="round"/></symbol>
+</defs></svg>
+<main>
+<h1>minimal-editor · アイコン案</h1>
+<div class="grid">
+<article><div class="large"><svg><use href="#a"/></svg></div><div class="actual"><span>24 / 32 px</span><svg><use href="#a"/></svg><svg><use href="#a"/></svg></div><h2>1　書きかけ <small>· 推奨</small></h2><p>文章の末尾に、小さなカーソル。</p><button class="pick" data-choice="1 書きかけ">これにする</button></article>
+<article><div class="large"><svg><use href="#b"/></svg></div><div class="actual"><span>24 / 32 px</span><svg><use href="#b"/></svg><svg><use href="#b"/></svg></div><h2>2　一枚の紙</h2><p>余白を残した、素朴な一枚。</p><button class="pick" data-choice="2 一枚の紙">これにする</button></article>
+<article><div class="large"><svg><use href="#c"/></svg></div><div class="actual"><span>24 / 32 px</span><svg><use href="#c"/></svg><svg><use href="#c"/></svg></div><h2>3　小文字の m</h2><p>minimal の頭文字を、曲線で。</p><button class="pick" data-choice="3 小文字の m">これにする</button></article>
+</div>
+<div class="other"><button data-choice="どれも問題ない（推奨の1）">どれも問題ない</button><button data-choice="別の方向を見たい">別の方向</button></div>
+<textarea id="result" readonly aria-label="返信するテキスト" placeholder="選んだ結果がここに出ます"></textarea>
+<footer>決めること：アイコンの形。推奨は1：文章と入力位置が伝わる。2は分かりやすいが一般的、3は固有の印にしやすいが執筆用途は伝わりにくい。採用後、タスクバーと起動用アイコンに反映。</footer>
+</main>
+<script>
+document.querySelectorAll('[data-choice]').forEach(button=>button.addEventListener('click',()=>{
+document.querySelectorAll('[data-choice]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+document.querySelector('#result').value='minimal-editor アイコン案\n選択: '+button.dataset.choice;
+}));
+document.querySelector('#result').addEventListener('click',event=>event.target.select());
+</script>
+</html>
