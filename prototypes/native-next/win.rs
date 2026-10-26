@@ -213,6 +213,7 @@ const _: () = {
 };
 #[link(name = "user32")]
 extern "system" {
+    pub fn GetSysColor(index: i32) -> u32;
     pub fn RegisterClassW(c: *const WndClass) -> u16;
     pub fn CreateWindowExW(
         ex: u32,
@@ -291,6 +292,7 @@ extern "system" {
 extern "system" {
     pub fn GetModuleHandleW(name: *const u16) -> Handle;
     pub fn LoadLibraryW(name: *const u16) -> Handle;
+    pub fn VirtualProtect(address: *mut c_void, size: usize, protection: u32, previous: *mut u32) -> i32;
     pub fn GetStartupInfoW(info: *mut StartupInfo);
 }
 #[link(name = "gdi32")]

@@ -4,6 +4,7 @@
 #![allow(non_snake_case)]
 mod store;
 mod error_dialog;
+mod ime_palette;
 mod win;
 mod worker;
 use std::{
@@ -1398,6 +1399,7 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
     } // Plain Unicode paste only.
     if m == 0x10d {
         (*s).composing = true;
+        ime_palette::composing(true);
         snapshot(s)
     }
     // A key press can move only the caret. Reveal (and restart the hide timer)
@@ -1410,6 +1412,7 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
     let result = CallWindowProcW(original, h, m, native_key, l);
     if m == 0x10e {
         (*s).composing = false;
+        ime_palette::composing(false);
         if h == (*s).body {
             save(s);
         }
@@ -1934,9 +1937,11 @@ unsafe fn run() -> Result<(), String> {
     };
     SetProcessDpiAwarenessContext(-4isize as Handle);
     let instance = GetModuleHandleW(ptr::null());
-    if LoadLibraryW(wide("msftedit.dll").as_ptr()).is_null() {
+    let rich_module = LoadLibraryW(wide("msftedit.dll").as_ptr());
+    if rich_module.is_null() {
         return Err(err());
     }
+    ime_palette::install(rich_module).map_err(|e| format!("IMEの配色を設定できません: {e}"))?;
     let brush = CreateSolidBrush(BG);
     let overlay_class = wide(&format!("MinimalEditorNextPicker-{unique:016x}"));
     let thumb_class = wide(&format!("MinimalEditorNextThumb-{unique:016x}"));

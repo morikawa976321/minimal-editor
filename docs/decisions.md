@@ -768,3 +768,28 @@ astra の判断: キー・位置ごとの抑止では要求を満たさないた
 ### 本人待ち
 
 追加判断なし。通常どおり閉じ、Win→minimal-editor→Enterで開き直すと更新が反映される。
+
+## 2026-10-26 · IME変換中の青背景
+
+本人の原文:
+> 変換中に青背景になるのを防ぎたい
+
+添付画像では暗い本文上の「見立て」が青い背景・白文字で強調されている。青背景を避ける要望と受け取り、変換対象自体を消す、IMEの属性を別の状態へ書き換える、変換を別窓へ移す要求には拡張しない。
+
+Claude の意見（sonnet、診断のみ）: ウィンドウ版RichEditには選択／IME色の文書化済みsetterがない。青がホストのシステム色か、TSFの表示属性か、CFU_INVERTの反転かは切り分けが必要。SetWindowThemeは効果が薄い見込み。文書化された方法を優先するならwindowless ITextServices＋自前ITextHost::TxGetSysColorの小実験を推奨。ただし実IMEでその経路を通るか未確認。意見の未検証部分を事実として採用しない。CLIはtoolなし・ファイル編集なしで依頼し、返答は `.work/ime-second-opinion.json`。
+
+astra の判断: [EM_SETIMECOLOR](https://learn.microsoft.com/en-us/windows/win32/controls/em-setimecolor)はRichEdit1.0専用のため採らない。SetWindowTheme(DarkMode_Explorer)は呼出成功でも試験画像の反転表示が変わらなかった。CFU_INVERTによる反転と、COLOR_HIGHLIGHTを使う青い選択は別である。`GetSysColor`の取得経路を自分の試験processだけで差し替えると、現行のウィンドウ版RichEditを保ったまま通常選択の色が変わることを確認した。今回は、ロード済みmsfteditのこのimportに限るprocess内差し替えを採用する。汎用の公開配色setterではなく、Windows側のimport構成に依存する方式であることを残す。
+
+前日の「import差し替えを製品には採らない」は警告音について標準APIで解決できた際のastraの判断であり、本人が禁止した要件ではない。今回はwindowless化に伴う入力ホスト・TSF・focus・スクロール等の置換範囲を避け、表示色の取得だけを変える方を選ぶ。OS全体のSetSysColors、TSF表示属性の永続設定変更、文字／変換範囲の書換え、描画後の青画素の上塗りは採らない。windowless方式は今後の代替案として残す。[TxGetSysColor](https://learn.microsoft.com/en-us/windows/win32/api/textserv/nf-textserv-itexthost-txgetsyscolor)は自前ホストで色を返せる標準APIだが、既存のwindowed controlのホストを置換するsetterではない。
+
+実装の範囲: `ime_palette.rs`でPEの通常／遅延importを名前で探し、GetSysColorだけを起動時・control作成前に差し替える。ページ保護は書込み直後に戻す。index13/14だけが対象で、その他は元のuser32 API。通常選択は既存の無彩色SELECTEDに合わせた灰、合成変換中通知では本文背景と同じ色。匿名ordinalや似た名前の関数は触らず、不正offsetや未対応構造は起動エラーにする。DLLのディスク上の内容やOS色は変更しない。
+
+検証はSTATUS参照。隔離desktopでTSFのthread/documentとMicrosoft IMEのprocess限定activateは取得できたが、KeyDownはすべて未処理となり実変換は再現できなかった。試験用Profile構造体のGUID alignment修正でactivate自体は成功したが、これは変換の成功ではない。本人の実行中processも調査時点では変換状態でなく、画像の原因の断定には使えない。実IMEが直接RGB色を渡す等、この取得経路を通らない場合は今回の修正で青が残る可能性がある。覆る条件は、再起動後も青が残る、変換の挙動が変わる、Windows更新でimport構造が変わること。
+
+### 本人待ち
+
+- 決めてほしいこと1問: 更新版で、変換中の青背景が消え、候補選択がこれまでどおり使えるか。
+- 推奨と理由: 更新版を一度試す。実際の入力部品は維持しており、合成通知での配色・全回帰試験は合格しているが、実IMEの候補変換は本人の確認が必要。
+- 他の選択肢: windowless入力ホストへの置換は影響範囲が大きいため今回は採らない。Windows全体の配色変更も採らない。
+- 変わるもの: 通常選択が灰色、変換中通知の強調が本文と同じ背景になる。本文データ・IME操作は維持する。
+- 開き方と返し方: 通常どおり閉じ、Win→minimal-editor→Enterで開き直す。「青が消えた／残る」と、候補操作に異常があればその内容だけ次のメッセージで返す。

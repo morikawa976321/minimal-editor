@@ -1,6 +1,18 @@
-# STATUS · 2026-10-25
+# STATUS · 2026-10-26
 
-## アプリ全体で警告音を出さない · 最新
+## IMEの青い強調背景を暗色へ差し替える版を配置 · 実IMEの見た目だけ本人確認
+
+本人の画像と「変換中に青背景になるのを防ぎたい」に対応。ウィンドウ版RichEditには現行版で使えるIME／選択色setterが見つからず、テーマ指定だけでも改善しなかった。このアプリがロードしたmsftedit.dllのメモリ内GetSysColor importだけをアプリ独自の色取得関数へ差し替える。COLOR_HIGHLIGHTは通常選択でRGB(65,65,65)、WM_IME_START〜ENDの間は本文と同じRGB(32,32,32)、COLOR_HIGHLIGHTTEXTはRGB(223,223,223)。それ以外の色は標準APIへ渡す。本文・書式・IME属性・候補選択処理を編集せず、OSの配色・レジストリ・DLLファイル・他processは変更しない。通常選択も灰色になる。
+
+日常起動先 `build/native-next.exe` に配置済み。SHA-256 `63b2139038e216f4fcf2a585f7e51641763e2cd702aafe080289ad351c15d71e`。通常どおり閉じ、Win→minimal-editor→Enterで開き直して変換すると更新版を試せる。本人の稼働窓は閉じていない。実行中の旧版については文字色・背景・IME状態を読み取っただけで、本文／選択／focusは変更していない。
+
+検証: 旧版 `.work/native-ime-palette-81mpllc8/result.json` は本文選択／合成変換中の各画像でシステムの青2735px、タイトルで1913px。新版 `.work/native-ime-palette-fa6v9hy8/result.json` は4画像とも同じ青0px、通常選択は灰2735px。本文・選択・保存回数を維持し、変換中通知では本文背景色になることを実PNGで確認。外側の試験processが読むOSの選択色は前後とも14120960（COLORREF、RGB 0/120/215）、文字色16777215で不変。測っているのは実RichEditの選択描画と合成WM_IME_START/ENDであり、実IME候補変換を再現した証拠ではない。
+
+`scripts/test-native.ps1`全体が合格（worker15・移行16・Node7・入力／保存／Undo・font7・一覧・scroll・消音57・新配色・非同期保存・ヘッドレス比較）。ログ `.work/ime-palette-suite.log`。配色parserの追加4試験（通常import／delay import／ordinalの区別／不正offset）も合格し、通常suiteへ組込み。入力 `.work/native-next-ui-bmo_2nwa/result.json`、font `.work/native-font-ui-f0o6s55b/result.json`、消音 `.work/native-silence-ui-ge903fma/result.json`。
+
+残る確認: 実IMEで変換中の青が消え、文節移動・候補選択が従来どおりかを本人が一度試す。隔離desktopでTSFを有効にしMicrosoft IMEを試験process限定でactivateするところまでは成功したが、ITfKeystrokeMgrがキーを引き受けず候補変換は再現できなかった。これを成功扱いしない。再起動後も青が残る場合は今回の方式がその色経路に届いていない可能性があり、追加調査する。詳細と意思決定カードはdecisions末尾。
+
+## アプリ全体で警告音を出さない · 前回
 
 本人の「一番下の行の一番右端でさらに下カーソルを押すとエラー音」「このアプリ内ではいかなる場合でもエラー音を鳴らさない」に対応。複数行の実末尾は選択位置18、GetWindowTextLengthW/WM_GETTEXTLENGTHはCRLF展開で20となり、前回の末尾ガードが通らずEndで警告音が出ていた。一行だけの警告音測定ではこの差を見落とした。
 

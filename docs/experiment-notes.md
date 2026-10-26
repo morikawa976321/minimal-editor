@@ -93,3 +93,4 @@
 - 2026-10-23: 旧版は入力中にBIZとなる一方、保存済み本文を開き直すとIntelへ戻ることが判明。フォント回帰試験は入力と読込を分離し、初期設定の読み戻しだけの試験を補った。合成WM_CHARのCRがこの経路で段落を作らなかったため、段落はEM_REPLACESELで明示挿入し、物理Enterの試験とは区別した。
 - 2026-10-25: 上下端の矢印をHome/Endへ置換すると位置の試験は通るが、既に端の場合にMessageBeepが18操作中12回呼ばれた。端だけ無処理に戻し0回を確認。位置と警告音は独立して検証する。空きRAM11,141,185,536 bytesを確認し、直接rustcと隔離desktopのGUI試験を逐次実行した。
 - 2026-10-25: 本人の再申告を複数行で再現。RichEdit選択位置18に対しWM_GETTEXTLENGTHはCRLFを含む20で、前回の末尾ガードが成立しない。一行だけの消音測定を全体の結論に広げたのが誤り。SES_ALLOWBEEPSだけでなくITextServicesのTXTBIT_ALLOWBEEPを直接無効にし、修正前53ケース95回／最終57ケース0回を測定。起動失敗も無音の標準ダイアログへ変更し実画像確認。空きRAM10,623,430,656 bytesを確認し、全native suiteを逐次実行した。
+- 2026-10-26: IME配色は旧API・テーマ指定・CFU_INVERTの反転・TSFの青を混同しない。Claude sonnetの第二意見はwindowlessホストを推奨したが、親は変更範囲を抑えるprocess内GetSysColor差し替えを試作検証して選択。実描画の青2735px→0、OS色不変、全suiteを確認した一方、TSF process限定activateが成功してもKeyDownは未処理で実IME変換は未検証。試験コードのimport時実行、GUID alignment、選択中のIME開始が選択を置換する点も修正し、合成通知と実候補変換の差を本人待ちへ明記。空きRAM12,588,040,192 bytesを確認して逐次実施した。

@@ -12,6 +12,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Native store tests did not build' }
     & ./build/native-next-store-tests.exe --test-threads=1
     if ($LASTEXITCODE -ne 0) { throw 'Native store tests failed' }
+    & rustc --edition=2021 --test -C debuginfo=0 tests/native_palette.rs -o build/native-palette-tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Native palette tests did not build' }
+    & ./build/native-palette-tests.exe --test-threads=1
+    if ($LASTEXITCODE -ne 0) { throw 'Native palette tests failed' }
     & rustc --edition=2021 -C opt-level=s -C debuginfo=0 prototypes/native-next/adopt.rs -o build/native-adopt.exe
     if ($LASTEXITCODE -ne 0) { throw 'Native adoption tool did not build' }
     & rustc --edition=2021 --test -C debuginfo=0 prototypes/native-next/adopt.rs -o build/native-adopt-tests.exe
@@ -30,6 +34,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Native wheel and scrollbar tests failed' }
     & $python tests/native_silence_desktop.py
     if ($LASTEXITCODE -ne 0) { throw 'Native warning-sound tests failed' }
+    & $python tests/native_ime_palette_desktop.py
+    if ($LASTEXITCODE -ne 0) { throw 'Native IME palette tests failed' }
     & $python tests/native_async_desktop.py
     if ($LASTEXITCODE -ne 0) { throw 'Asynchronous native GUI tests failed' }
     & node tests/native_comparison_ui.mjs
