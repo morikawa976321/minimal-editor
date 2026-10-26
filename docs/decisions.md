@@ -847,3 +847,25 @@ astra の判断: 完成画像を見てA/G/Cの3案を採用し、表示順を原
 - 他の選択肢: 1 原案は気に入った形を維持。3 二行は余白を広げる方向。ブロックは端末を連想させる面があり、そこを好むとは断定しない。
 - 変わるもの: 形が決まったらICO・exe・ウィンドウ・起動用アイコンの反映を進める。現在は比較のみ。
 - 開き方と返し方: previews/icon-variants.htmlをダブルクリックし、選択結果のテキストブロックを次のメッセージに貼る。「どれも問題ない」「さらに別の形」も用意。形の調整要望は返信に追記できる。
+
+
+## 2026-10-26 · 原案のカーソルなしを本人が採用
+
+本人の原文:
+> 1のカーソルバーなしを採用
+
+astra の判断: 原案のカーソル矩形だけを取り除き、三本線の座標・行長・太さ・角、背景と前景の色を維持する。前節の形の本人待ちは解消。原本assets/minimal-editor.svgと透過PNG、16/20/24/32/40/48/64/128/256pxのICOを追加し、日常アプリと起動ショートカットへ反映する。本人の選択を別の推奨案へ置き換えない。
+
+実装: scripts/build-icon.mjsはインストール済みの非表示EdgeでSVGを描画してPNG/ICOを生成する。通常のnativeビルドは追跡済みICOを使用するのでブラウザを起動しない。scripts/embed-icon.ps1はWindowsのBeginUpdateResourceW/UpdateResourceWでビルド中の一時exeへRT_ICONとRT_GROUP_ICONを追加する。既存リソースは残し、処理成功後だけ通常のビルド経路で日常exeへ置換する。SDKリソースコンパイラや新しい依存は追加しない。元画像は8.7KB以下のICO・小さなPNG/SVGで、大きなビルド成果物は追跡しない。
+
+astra の判断 · タイトルバー: クラスアイコンやWM_SETICONの大小を設定すると、従来空だったタイトルバーにもアイコンが出た。可逆な隔離試作で比較し、クラスと小アイコンは空のまま、WM_GETICONのICON_BIGに限って要求DPIに合う共有アイコンを返す方式へ変更。タイトルバーの既存の見た目を維持し、シェルと起動ファイルへ採用アイコンを提供する。端末風のカーソルを追加したり、タイトルバーに新しい表示を足したりしない。
+
+外部変更: 許可済みのスタートメニュー内minimal-editor.lnk 1ファイルのIconLocationをassets/minimal-editor.ico,0に更新。wscript.exe→scripts/app.vbsの起動経路は維持し、読戻し確認した。当該shortcutへのSHCNE_UPDATEITEM通知だけを送り、全体のキャッシュ削除・Explorer再起動・レジストリ変更はしない。起動中の本人の窓・入力・クリップボード・原稿は操作していない。
+
+検証: scripts/test-native.ps1の最終実装での全suiteが合格（.work/icon-final-suite.log）。最終の隔離desktop probe .work/native-icon-k_iihfz4/result.jsonが合格。exeのRT_ICON全9フレームはICOのPNGとバイト一致し、各サイズの描画とカーソル除去、96/120/144/192 DPIでの大アイコン描画一致、小アイコンなし、タイトルバー左上の明るい画素0を確認。Windows Shellがexeと実shortcutから返す32px画像を保存して目視確認し、不透明RGBが一致。Shellの角の透過合成とshortcutの左下矢印で画素差が生じるため、画像全体のバイト一致とは言わない。RGB比較は元SVGの角半径6に対応する四隅の6px四方とshortcut左下16px四方のoverlayを除いた範囲で行った。WM_GETICONの画像とICOの直接描画は全体一致。実タスクバーを撮影したという意味には拡張しない。
+
+日常版SHA-256: b75b67f1fbc8a3a04e34f58372aaf28b30d8e711415f553c1698b6c26d8935d9。通常どおり閉じてWin→minimal-editor→Enterで開き直すと反映。
+
+### 本人待ち
+
+なし。採用済みで反映完了。追加の選択・返信は不要。

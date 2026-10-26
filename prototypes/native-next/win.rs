@@ -269,6 +269,8 @@ extern "system" {
         flags: u32,
     ) -> i32;
     pub fn LoadCursorW(instance: Handle, name: *const u16) -> Handle;
+    pub fn LoadImageW(instance: Handle, name: *const u16, kind: u32, width: i32, height: i32, flags: u32) -> Handle;
+    pub fn GetSystemMetricsForDpi(index: i32, dpi: u32) -> i32;
     pub fn GetKeyState(key: i32) -> i16;
     pub fn FindWindowW(class: *const u16, title: *const u16) -> Hwnd;
     pub fn GetDpiForWindow(h: Hwnd) -> u32;

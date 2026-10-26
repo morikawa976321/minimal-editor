@@ -19,7 +19,19 @@ $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $target
 $shortcut.Arguments = $arguments
 $shortcut.WorkingDirectory = $repo
+$shortcut.IconLocation = (Join-Path $repo 'assets/minimal-editor.ico') + ',0'
 $shortcut.Description = 'Write independently. Saved automatically on this computer.'
 $shortcut.Save()
+if (-not ('MinimalEditorShortcutNotify' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class MinimalEditorShortcutNotify {
+    [DllImport("shell32.dll", CharSet=CharSet.Unicode)]
+    public static extern void SHChangeNotify(uint change, uint flags, string item, IntPtr other);
+}
+'@
+}
+[MinimalEditorShortcutNotify]::SHChangeNotify(0x2000, 0x1005, $shortcutPath, [IntPtr]::Zero)
 if (Test-Path -LiteralPath $previousPath) { Remove-Item -LiteralPath $previousPath }
 Write-Output $shortcutPath

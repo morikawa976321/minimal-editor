@@ -1,6 +1,14 @@
 # STATUS · 2026-10-26
 
-## オリジナルアイコン · 「書きかけ」の派生を比較中
+## オリジナルアイコン · 原案からカーソルを除いて採用・反映済み
+
+本人の「1のカーソルバーなしを採用」に従い、原案の三本線と暗い角丸背景を維持し、カーソルだけを除去。`assets/minimal-editor.svg`が原本、PNGと9サイズのICOを生成。通常ビルドで一時exeにWindowsリソースを組み込んでから配置するようにした。日常版`build/native-next.exe`へ反映済み（SHA-256 `b75b67f1fbc8a3a04e34f58372aaf28b30d8e711415f553c1698b6c26d8935d9`）。起動中の本人の窓は操作していない。通常どおり閉じ、Win→minimal-editor→Enterで開き直すと反映する。
+
+外部変更は許可済みの `C:\Users\tm976\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\minimal-editor.lnk` 1ファイルのみ。IconLocationがリポジトリのICOを指すことを読戻し確認し、当該ファイルのShell更新を通知。起動先・引数は維持。
+
+検証: 標準`scripts/test-native.ps1`全体が合格（`.work/icon-final-suite.log`）。最終アイコン確認`.work/native-icon-k_iihfz4/result.json`でexe内の全9フレームがICOとバイト一致し、16〜256pxの描画一致、96/120/144/192 DPIのWM_GETICON大アイコンが採用画像と一致。タイトルバーのアイコン領域は明るい画素0で、従来の無表示を維持。Windows Shellがexe／実ショートカットから取得する32px画像も、角の透過合成とショートカットの矢印を除く不透明RGBが一致し、実画像を目視確認。実タスクバー画面の撮影ではない。空きRAM8,805,519,360 bytesを確認して作業。追加の本人待ちなし。再生成方法は`assets/README.md`。
+
+## オリジナルアイコン · 「書きかけ」の派生（選択済み）
 
 本人が「1が好み。その方向性で色々考えて」と回答。方向は文章の行＋末尾カーソルで確定し、初回の方向選択待ちは解消。線幅・角・行数・行長・カーソル・余白の9方向をSVGで作成し、Claude sonnetの画像審査を経て、原案／ブロック／二行の3案へ絞った。親の推奨はブロック。`previews/icon-variants.html` をダブルクリックして選ぶと返信テキストが出る。`previews/icon-variants.png` はチャット提示画像。色は同じにして形を比較。初回の `icon-concepts.html` は履歴として保持。
 

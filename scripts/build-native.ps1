@@ -19,6 +19,7 @@ try {
     if (-not $acquired) { throw 'Another native build is still in progress; previous executable is intact' }
     & rustc --edition=2021 -C opt-level=s -C debuginfo=0 -C codegen-units=1 (Join-Path $repo 'prototypes/native-next/main.rs') -o $staging
     if ($LASTEXITCODE -ne 0) { throw 'Native build failed; previous executable is intact' }
+    & (Join-Path $PSScriptRoot 'embed-icon.ps1') -Executable $staging
     # Windows allows an executing image to be renamed, but not overwritten.
     # Keep that image on disk for the running process and possible rollback.
     if (Test-Path -LiteralPath $canonical) {

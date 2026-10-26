@@ -1611,6 +1611,16 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
         return DefWindowProcW(h, m, w, l);
     }
     match m {
+        0x7f => { // WM_GETICON: shell icon, while keeping the caption icon absent.
+            if w != 1 { // ICON_SMALL / SMALL2 would also draw in the caption.
+                return 0;
+            }
+            let dpi = if l > 0 { l as u32 } else { GetDpiForWindow(h) };
+            let size = GetSystemMetricsForDpi(11, dpi); // SM_CXICON.
+            // LR_SHARED: the module owns cached handles until process exit.
+            LoadImageW(GetModuleHandleW(ptr::null()), 1usize as *const u16,
+                       1, size, size, 0x8000) as isize
+        }
         0x106 if w != 0x20 => 0, // WM_SYSCHAR: silence unassigned Alt characters; keep Alt+Space.
         0x120 => 1 << 16, // WM_MENUCHAR / MNC_CLOSE: close an unmatched menu silently.
         0x20a => {
