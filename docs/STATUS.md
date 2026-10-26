@@ -1,6 +1,8 @@
 # STATUS · 2026-10-26
 
-## IMEの青い強調背景を暗色へ差し替える版を配置 · 実IMEの見た目だけ本人確認
+## IMEの青い強調背景を暗色へ変更 · 本人が解消を確認
+
+2026-10-26、本人が「治ってる。」と回答。実利用で青背景が解消したことを確認済みとして、この修正の本人待ちを終了する。候補操作や再変換の全経路を個別に検証したという意味には拡張しない。追加のコード変更は不要。
 
 本人の画像と「変換中に青背景になるのを防ぎたい」に対応。ウィンドウ版RichEditには現行版で使えるIME／選択色setterが見つからず、テーマ指定だけでも改善しなかった。このアプリがロードしたmsftedit.dllのメモリ内GetSysColor importだけをアプリ独自の色取得関数へ差し替える。COLOR_HIGHLIGHTは通常選択でRGB(65,65,65)、WM_IME_START〜ENDの間は本文と同じRGB(32,32,32)、COLOR_HIGHLIGHTTEXTはRGB(223,223,223)。それ以外の色は標準APIへ渡す。本文・書式・IME属性・候補選択処理を編集せず、OSの配色・レジストリ・DLLファイル・他processは変更しない。通常選択も灰色になる。
 
@@ -10,7 +12,7 @@
 
 `scripts/test-native.ps1`全体が合格（worker15・移行16・Node7・入力／保存／Undo・font7・一覧・scroll・消音57・新配色・非同期保存・ヘッドレス比較）。ログ `.work/ime-palette-suite.log`。配色parserの追加4試験（通常import／delay import／ordinalの区別／不正offset）も合格し、通常suiteへ組込み。入力 `.work/native-next-ui-bmo_2nwa/result.json`、font `.work/native-font-ui-f0o6s55b/result.json`、消音 `.work/native-silence-ui-ge903fma/result.json`。
 
-残る確認: 実IMEで変換中の青が消え、文節移動・候補選択が従来どおりかを本人が一度試す。隔離desktopでTSFを有効にしMicrosoft IMEを試験process限定でactivateするところまでは成功したが、ITfKeystrokeMgrがキーを引き受けず候補変換は再現できなかった。これを成功扱いしない。再起動後も青が残る場合は今回の方式がその色経路に届いていない可能性があり、追加調査する。詳細と意思決定カードはdecisions末尾。
+検証の区別: 隔離desktopではTSFを有効にしMicrosoft IMEを試験process限定でactivateするところまでは成功したが、ITfKeystrokeMgrがキーを引き受けず候補変換は再現できなかった。自動試験での実変換成功とは扱わず、実利用の解消は上記の本人回答を根拠とする。追加の本人待ちなし。
 
 ## アプリ全体で警告音を出さない · 前回
 
