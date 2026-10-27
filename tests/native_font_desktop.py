@@ -163,6 +163,49 @@ def child(folder, desktop):
         check("reopened Latin", latin_at + 1)
         check("reopened digits", text.index("123487") + 1)
         screenshot(window, process.pid, folder / "reopened-sample.png")
+        # Reproduce the observed state: only the trailing Latin paragraphs
+        # have the Asian face. A bulk insertion must repair that state without
+        # making display formatting consume text Undo/Redo or save generations.
+        sample = '日本語の前置き。\ncontext: "授業課題"\nrole: ""\ntools: ["Proc"]\ncover: ./cover.png\ncoverFit: contain'
+        replace(sample)
+        tail = sample.index('role:')
+        send(editor, 0xB1, tail, -1)
+        face = C.create_string_buffer(116)
+        struct.pack_into('<II', face, 0, 116, 0x28000000)  # CFM_FACE | CFM_CHARSET
+        face[24] = b'\x00'
+        encoded = ('BIZ UDGothic' + '\0').encode('utf-16le')
+        C.memmove(C.addressof(face) + 26, encoded, len(encoded))
+        put(face.raw)
+        assert send(editor, 0x444, 1, memory) != 0
+        poisoned = inspect(tail)
+        assert poisoned['face'] in ('BIZ UDGothic', 'BIZ UDゴシック'), poisoned
+        result['injectedTrailingFont'] = poisoned
+        send(editor, 0xB1, -1, -1)
+        send(editor, 0x458, 0, 0)  # EM_STOPGROUPTYPING
+        before_bulk = gui.eventually(settled, 'Injected font did not settle')
+        suffix = C.create_unicode_buffer('\r\nnext nnn')
+        send(editor, 0xC2, 1, C.cast(suffix, C.c_void_p).value)
+        inserted = gui.eventually(settled, 'Bulk insertion did not save')
+        assert inserted['text'] == sample + '\nnext nnn', inserted
+        for word in ['role:', 'tools:', 'cover:', 'coverFit:']:
+            check('bulk repair ' + word, sample.index(word))
+        assert inserted['generation'] == before_bulk['generation'] + 1, inserted
+        assert inserted['saveCount'] == before_bulk['saveCount'] + 1, inserted
+        end = len(sample + '\nnext nnn')
+        assert inserted['bodySelection'] == [end, end], inserted
+        assert send(editor, 0xC7, 0, 0) != 0
+        undone = gui.eventually(settled, 'Undo did not save')
+        assert undone['text'] == sample, undone
+        check('Undo keeps Latin style', tail)
+        assert send(editor, 0x454, 0, 0) != 0
+        redone = gui.eventually(settled, 'Redo did not save')
+        assert redone['text'] == sample + '\nnext nnn', redone
+        check('Redo keeps Latin style', tail)
+        result['bulkStyleUndoRedo'] = True
+        result['japaneseAfterRepair'] = inspect(0)
+        assert result['japaneseAfterRepair']['face'] in ('BIZ UDGothic', 'BIZ UDゴシック'), result
+        assert result['japaneseAfterRepair']['twips'] == 300, result
+        screenshot(window, process.pid, folder / 'repaired-bulk-sample.png')
         assert not failures, "\n".join(failures)
         result["passed"] = True
         result["real_ime"] = "WM_CHAR text and explicit paragraphs under Japanese layout; not physical IME candidate conversion"

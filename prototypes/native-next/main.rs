@@ -1395,8 +1395,10 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
         }
     }
     if h == (*s).body && (m == 0x302 || (m == WM_CHAR && w == 0x16)) {
-        return CallWindowProcW(original, h, 0x440, 13, 0);
-    } // Plain Unicode paste only.
+        let result = CallWindowProcW(original, h, 0x440, 13, 0);
+        restore_body_style(s);
+        return result;
+    } // Plain Unicode paste only; RichEdit can still bind Latin runs to its Asian face.
     if m == 0x10d {
         (*s).composing = true;
         ime_palette::composing(true);
@@ -1410,6 +1412,16 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
         SendMessageW(h, EM_GETSCROLLPOS, 0, &mut before_scroll as *mut _ as isize);
     }
     let result = CallWindowProcW(original, h, m, native_key, l);
+    // Native bulk insertion and undo/redo can restore a script-bound face even
+    // though the document stores only text. Reassert the same style as a load.
+    // Never rewrite formatting during an IME composition or ordinary typing.
+    let bulk_edit = [0x440, 0xc2, 0x304, 0xc7, 0x454].contains(&m)
+        || (m == WM_CHAR && [0x19, 0x1a].contains(&w))
+        || (m == WM_KEYDOWN && GetKeyState(0x11) < 0 && [0x56, 0x59, 0x5a].contains(&w))
+        || (m == WM_KEYDOWN && GetKeyState(0x10) < 0 && w == 0x2d);
+    if h == (*s).body && bulk_edit {
+        restore_body_style(s);
+    }
     if m == 0x10e {
         (*s).composing = false;
         ime_palette::composing(false);
@@ -1838,10 +1850,60 @@ unsafe fn configure_rich(_s: *mut State, h: Hwnd, body: bool) -> Result<(), Stri
     }
     silence_rich(h)
 }
+// Presentation repairs must preserve the text undo/redo history. This is the
+// standard TOM mechanism previously used for the temporary font-weight preview.
+struct UndoPause(Handle);
+impl UndoPause {
+    unsafe fn new(h: Hwnd) -> Option<Self> {
+        let mut ole: *mut Unknown = ptr::null_mut();
+        if SendMessageW(h, 0x43c, 0, &mut ole as *mut _ as isize) == 0 || ole.is_null() {
+            return None;
+        }
+        let iid = Guid { data1: 0x8cc497c0, data2: 0xa1df, data3: 0x11ce,
+            data4: [0x80, 0x98, 0, 0xaa, 0, 0x47, 0xbe, 0x5d] };
+        let mut doc = ptr::null_mut();
+        let hr = ((*(*ole).vtable).query_interface)(ole, &iid, &mut doc);
+        ((*(*ole).vtable).release)(ole);
+        if hr < 0 || doc.is_null() { return None; }
+        let guard = Self(doc);
+        if guard.undo(-9999995) < 0 {
+            guard.release();
+            mem::forget(guard);
+            return None;
+        }
+        Some(guard)
+    }
+    unsafe fn undo(&self, count: i32) -> i32 {
+        let table = *(self.0 as *const *const *const c_void);
+        let undo: unsafe extern "system" fn(Handle, i32, *mut i32) -> i32 = mem::transmute(*table.add(22));
+        undo(self.0, count, ptr::null_mut())
+    }
+    unsafe fn release(&self) {
+        let table = *(self.0 as *const *const *const c_void);
+        let release: unsafe extern "system" fn(Handle) -> u32 = mem::transmute(*table.add(2));
+        release(self.0);
+    }
+}
+impl Drop for UndoPause {
+    fn drop(&mut self) { unsafe { self.undo(-9999994); self.release(); } }
+}
+unsafe fn restore_body_style(s: *mut State) {
+    if (*s).loading || (*s).composing || !(*s).ready { return; }
+    let h = (*s).body;
+    let Some(_undo) = UndoPause::new(h) else { return; };
+    let modified = SendMessageW(h, 0xb8, 0, 0); // EM_GETMODIFY
+    (*s).loading = true; // Formatting does not create another save generation.
+    SendMessageW(h, 0xb, 0, 0); // WM_SETREDRAW
+    uniform_body_format(s);
+    SendMessageW(h, 0xb9, modified as usize, 0); // EM_SETMODIFY
+    SendMessageW(h, 0xb, 1, 0);
+    (*s).loading = false;
+    InvalidateRect(h, ptr::null(), 0);
+}
 unsafe fn uniform_body_format(s: *mut State) {
     // WM_SETTEXT resets paragraph formatting. Apply the single document style
-    // after a load, before the new document's undo history begins. Editing does
-    // not reapply this or touch the user's selection/undo buffer.
+    // after a load, before the new document's undo history begins. Bulk editing
+    // also uses this under UndoPause; selection and viewport are preserved.
     let h = (*s).body;
     let mut selection = CharRange::default();
     let mut scroll = Point::default();

@@ -1,3 +1,15 @@
+# 2026-10-27 · 貼付け後の英字フォント割当てを補正
+
+本人が「上も含めて一度に貼り付けた」と回答。一括貼付けで発生した申告として記録。稼働中の本文RichEditをAccessibleObjectFromWindow(OBJID_NATIVEOM)→ITextDocument.Range→Font.GetName/GetSizeで読み、title/year/summary/contextはIntel One Mono・15pt、role/tools/cover/coverFitはBIZ UDゴシック・15ptを確認した（`.work/live-paste-fonts.json`）。選択・focus・本文を変更しない読み取りである。見た目の錯覚や文字サイズ差ではなく、後半の英字runに日本語用の字体が付いている。
+
+修正: 貼付け、EM_REPLACESEL等の一括挿入、Undo/Redoの後に、読込時と同じ本文スタイルを再適用する。TOM Undo(tomSuspend/tomResume)で表示補正を履歴から外し、選択・scroll・modifiedを保持。loadingガードで補正による保存世代追加を防ぐ。通常の1文字入力とIME変換中には適用しない。英字Intel One Mono／日本語BIZ UDGothic、20論理px・weight400は維持。新しいclipboard書込処理は追加していない。
+
+日常版`build/native-next.exe`更新済み。SHA256 `b9e41342a68b665fc601b35d20cabb3901a0a2cd05740783650971c7e62222d0`。通常どおり閉じ、Win→minimal-editor→Enterで開き直すと、既存本文も読込時に字体を揃えて表示する。本人の稼働窓は閉じていない。
+
+検証: 下4行へBIZの英字runを注入する回帰試験では、旧版は幅13px・BIZを維持して6箇所失敗、修正版は幅15px・Intelへ復元。日本語はBIZ・幅25px、300twipsを維持。1回の挿入は編集世代+1／保存+1に留まり、caret位置保持、Undoで本文を正確に戻しRedoで正確に再現しながら英字字体も維持。`.work/native-font-ui-puidi_l3/result.json`、実PNGも確認。旧版失敗ログ`.work/paste-old-font.log`。標準`scripts/test-native.ps1`全体が合格（`.work/paste-font-suite.log`、store15／palette4／migration16／Node／GUI・一覧・scroll・消音・IME配色・非同期保存・比較）。空きRAMは作業開始時6,547,890,176 bytes、後に8,765,231,104 bytes。
+
+検証の限界: 元の貼付け操作がどの内部経路でBIZ割当てを作ったかは未再現。文字列のEM_REPLACESELと独立RichEditのCF_UNICODETEXT TOM Pasteは、実本文から取り出した該当節でも全英字Intelだった。Ctrl+Vのキー押下が書式除去を迂回する仮説も、import差替えprobeでは読取APIの呼出を捕捉できず証明できていない。その仮説を確定原因として報告しない。今回の回帰は観測された不正な字体割当てを注入し補正を確認した試験であり、元の貼付けの再現ではない。本人待ちの質問は解消し、追加の必須回答なし。
+
 # 2026-10-27 · 貼付け後の下4行のフォント差（調査中）
 
 本人の画像ではcontext行の後のrole/tools/cover/coverFit行の英字が上側と異なる。原因はまだ確定していない。本文の貼付けはWM_PASTE／Ctrl+VをEM_PASTESPECIAL(CF_UNICODETEXT)へ転送するコードがあり、通常の入口では元のRTF書式は取り込まない。IMF_AUTOFONT|IMF_DUALFONTと英字Intel One Mono／日本語BIZ UDGothicの自動切替が候補だが、推測として扱う。
