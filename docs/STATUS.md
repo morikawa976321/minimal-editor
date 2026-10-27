@@ -1,3 +1,15 @@
+# 2026-10-27 · 貼付け後の下4行のフォント差（調査中）
+
+本人の画像ではcontext行の後のrole/tools/cover/coverFit行の英字が上側と異なる。原因はまだ確定していない。本文の貼付けはWM_PASTE／Ctrl+VをEM_PASTESPECIAL(CF_UNICODETEXT)へ転送するコードがあり、通常の入口では元のRTF書式は取り込まない。IMF_AUTOFONT|IMF_DUALFONTと英字Intel One Mono／日本語BIZ UDGothicの自動切替が候補だが、推測として扱う。
+
+現行exeの専用desktop試験で、画像から転記した文字列のEM_REPLACESEL挿入3条件は全24箇所Intel One Mono・幅15px。独立RichEditのクリップボードを使わないTOM IDataObject Paste(CF_UNICODETEXT)でも、一括／ASCII引用符／下4行別の3条件・全24箇所Intel One Monoで、症状は未再現。後者はアプリそのもののWM_PASTEではない。成果: `.work/native-paste-probe-23gsi0nk/result.json`、`.work/paste-tom-xzgj_lyr/result.json`。コード・日常exeは未変更。
+
+本人の稼働PID22108は10/26 22:32起動で、実loaded imageはnative-next-retired-02d9ba5e06c343ed80f9c35efc06af75.exe、SHA256 63b213…（IME配色修正版）。現行b75b67…との差はその後のアイコンであり、これだけを原因にしない。UI Automationでは該当行のフォント情報を取得できず。本文・選択・focusは変更していない。
+
+検証事故: 初回TOM CopyでVT_UNKNOWN|VT_BYREFとppunkVal指定が必要という条件を未確認のまま呼び、既定のクリップボード経路へ試験文字列を書いてしまった。本人に謝罪・報告済み。指示違反であり隔離desktopだけではクリップボードが分離しない。後続は公式仕様を確認して非null ppunkValでIDataObjectを受け渡す修正後だけ実施。別window stationによる分離はCreateWindowStationのアクセス拒否で成立しなかった。
+
+次: 本人に「上も含め一括か、下4行だけ後からか」を質問済み。回答で貼付け位置と継承書式の条件を絞り、再現してから修正する。現時点で引用符やWindowsを原因と断定しない。
+
 # STATUS · 2026-10-26
 
 ## オリジナルアイコン · 原案からカーソルを除いて採用・反映済み
