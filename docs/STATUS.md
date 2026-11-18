@@ -1,3 +1,11 @@
+# 2026-11-18 · 空のメモを整理
+
+日常版ネイティブの保存先 `data/native-next` を、本人がアプリを閉じた後にストアのロック下で整理した。アーカイブ23件中、本文が0文字だった16件を一覧と本文ファイルから削除した。再読込で通常5件・アーカイブ7件・空のアーカイブ0件を確認し、残した12件の本文のハッシュと一覧の情報を削除前と照合した。既存の履歴・復旧用コピーは保持。
+
+日常版 `build/native-next.exe` を更新した。空白や改行だけの状態で Ctrl+P から別メモを開く、アーカイブを復元して開く、または Ctrl+N で新規メモを開くと、空の本文を書き込まず、元のメモを削除する。以前の本文がディスクに残っていた場合は履歴へ退避する。通常終了時は空の本文も保存する。Winキー → minimal-editor → Enter で更新版を開ける。
+
+`scripts/test-native.ps1` は終了コード0。隔離デスクトップで別メモへの切り替えと連続新規作成、空の本文を書き込まないこと、削除前の本文を履歴に保持することを確認した。切り替え先が外部変更されていた場合に元のメモを削除しないことはストア試験で確認した。ログは `.work/empty-memos-verified.log`。
+
 # 2026-10-27 · 貼付け後の英字フォント割当てを補正
 
 本人が「上も含めて一度に貼り付けた」と回答。一括貼付けで発生した申告として記録。稼働中の本文RichEditをAccessibleObjectFromWindow(OBJID_NATIVEOM)→ITextDocument.Range→Font.GetName/GetSizeで読み、title/year/summary/contextはIntel One Mono・15pt、role/tools/cover/coverFitはBIZ UDゴシック・15ptを確認した（`.work/live-paste-fonts.json`）。選択・focus・本文を変更しない読み取りである。見た目の錯覚や文字サイズ差ではなく、後半の英字runに日本語用の字体が付いている。

@@ -167,7 +167,7 @@ unsafe fn fail(s: *mut State, message: String) {
 }
 // Only the worker touches memo files after startup. The UI owns the latest
 // buffer, and queues at most one request; edits during I/O stay in RichEdit.
-unsafe fn save(s: *mut State) -> bool {
+unsafe fn save(s: *mut State, allow_blank: bool) -> bool {
     if (*s).inflight || (*s).composing || (*s).worker_failed {
         return false;
     }
@@ -184,6 +184,10 @@ unsafe fn save(s: *mut State) -> bool {
             return false;
         }
     };
+    // An empty buffer can still be discarded by the next document switch.
+    if !allow_blank && store::blank(&text) {
+        return false;
+    }
     let request = Request::Save {
         id,
         text,
@@ -233,7 +237,27 @@ unsafe fn request_action(s: *mut State, action: PendingAction) {
     snapshot(s);
 }
 unsafe fn continue_action(s: *mut State) {
-    if (*s).pending_action.is_none() || !save(s) {
+    if (*s).inflight || (*s).composing || (*s).worker_failed {
+        return;
+    }
+    let Some(pending) = &(*s).pending_action else {
+        return;
+    };
+    let mut discard = None;
+    if matches!(pending, PendingAction::Storage(Action::Create | Action::Switch { .. })) {
+        if let Some(id) = (*s).active.clone() {
+            match read_text((*s).body) {
+                Ok(text) if store::blank(&text) => discard = Some(id),
+                Ok(_) => {}
+                Err(e) => {
+                    (*s).pending_action = None;
+                    fail(s, e);
+                    return;
+                }
+            }
+        }
+    }
+    if discard.is_none() && !save(s, true) {
         return;
     }
     match (*s).pending_action.take().unwrap() {
@@ -241,7 +265,7 @@ unsafe fn continue_action(s: *mut State) {
             DestroyWindow((*s).window);
         }
         PendingAction::Storage(action) => {
-            match (*s).worker.send(Request::Action(action)) {
+            match (*s).worker.send(Request::Action { action, discard }) {
                 Ok(()) => {
                     (*s).inflight = true;
                     (*s).action_inflight = true;
@@ -288,7 +312,7 @@ unsafe fn poll_storage(s: *mut State) {
                 // Preserve a newer buffer too, rather than only recovering the
                 // older text that happened to be in flight when the error hit.
                 if (*s).active.as_deref() == Some(&id) && (*s).generation > generation {
-                    save(s);
+                    save(s, false);
                 }
             } else {
                 (*s).save_count += 1;
@@ -303,13 +327,14 @@ unsafe fn poll_storage(s: *mut State) {
                     let preferred = (&(*s).items).get((*s).selected).map(|m| m.id.clone());
                     reload_items(s, preferred.as_deref());
                 }
-                if (*s).dirty {
-                    save(s);
+                if (*s).pending_action.is_some() {
+                    continue_action(s);
+                } else if (*s).dirty {
+                    save(s, false);
                 }
-                continue_action(s);
             }
         }
-        Request::Action(action) => {
+        Request::Action { action, .. } => {
             (*s).action_inflight = false;
             SendMessageW((*s).body, 0xcf, usize::from((*s).active.is_none()), 0);
             EnableWindow((*s).title_edit, 1);
@@ -1426,7 +1451,7 @@ unsafe extern "system" fn rich_proc(h: Hwnd, m: u32, w: usize, l: isize) -> isiz
         (*s).composing = false;
         ime_palette::composing(false);
         if h == (*s).body {
-            save(s);
+            save(s, false);
         }
         snapshot(s)
     }
@@ -1665,7 +1690,7 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
                 (*s).dirty = true;
                 (*s).generation += 1;
                 if !(*s).composing {
-                    save(s);
+                    save(s, false);
                 }
                 update_thumb(s, false);
             }
@@ -1676,7 +1701,7 @@ unsafe extern "system" fn window_proc(h: Hwnd, m: u32, w: usize, l: isize) -> is
             match w {
                 1 => {
                     if (*s).dirty && !(*s).composing {
-                        save(s);
+                        save(s, false);
                     }
                 }
                 2 => {

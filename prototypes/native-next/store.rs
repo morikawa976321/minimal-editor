@@ -19,6 +19,10 @@ const HEADER: &str = "minimal-editor-native-v1";
 const HISTORY_INTERVAL: Duration = Duration::from_secs(60);
 static NONCE: AtomicU64 = AtomicU64::new(0);
 
+pub fn blank(text: &str) -> bool {
+    text.trim().is_empty()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Memo {
     pub id: String,
@@ -163,12 +167,13 @@ impl Store {
 
     /// Create and select a new memo. A failed catalog update can leave an
     /// unlisted file, but cannot publish a record with missing contents.
-    pub fn create(&mut self) -> Result<String, String> {
+    pub fn create(&mut self, discard: Option<&str>) -> Result<String, String> {
         self.check_catalog()?;
         require_directory(&self.dir.join("memos"))?;
+        let mut records = self.records.clone();
+        let removed = self.discard_active(&mut records, discard)?;
         let (id, created) = (new_id(), now_ms());
         write_new(&self.memo_path(&id), b"")?;
-        let mut records = self.records.clone();
         records.push(Record {
             memo: Memo {
                 id: id.clone(),
@@ -180,21 +185,52 @@ impl Store {
             revision: sha256(b""),
             checkpoint: None,
         });
-        self.publish(records, Some(id.clone()))?;
+        self.publish_removing(records, Some(id.clone()), &removed)?;
         Ok(id)
     }
 
-    pub fn activate(&mut self, id: &str) -> Result<(), String> {
+    pub fn activate(
+        &mut self,
+        id: &str,
+        restoring: bool,
+        discard: Option<&str>,
+    ) -> Result<String, String> {
         self.check_catalog()?;
-        let record = self.record(id)?;
-        if record.memo.archived {
+        let index = self.index(id)?;
+        let record = &self.records[index];
+        if record.memo.archived && !restoring {
             return Err("保管中のメモは開けません".into());
         }
-        self.read_verified(record)?;
+        let text = self.read_verified(record)?;
         if self.active.as_deref() != Some(id) {
-            self.publish(self.records.clone(), Some(id.to_owned()))?;
+            let mut records = self.records.clone();
+            records[index].memo.archived = false;
+            let removed = self.discard_active(&mut records, discard)?;
+            self.publish_removing(records, Some(id.to_owned()), &removed)?;
         }
-        Ok(())
+        Ok(text)
+    }
+
+    fn discard_active(
+        &self,
+        records: &mut Vec<Record>,
+        discard: Option<&str>,
+    ) -> Result<Vec<(String, String)>, String> {
+        let Some(id) = discard else {
+            return Ok(Vec::new());
+        };
+        if self.active.as_deref() != Some(id) {
+            return Err("編集中のメモが切り替わりました".into());
+        }
+        let index = self.index(id)?;
+        let text = self.read_verified(&self.records[index])?;
+        if !blank(&text) {
+            // The on-screen buffer was cleared before autosave. Keep the last
+            // saved text in history before removing the memo from the lists.
+            self.checkpoint(id, text.as_bytes())?;
+        }
+        records.remove(index);
+        Ok(vec![(id.to_owned(), text)])
     }
 
     pub fn rename(&mut self, id: &str, title: &str) -> Result<(), String> {
@@ -298,14 +334,45 @@ impl Store {
     }
 
     fn publish(&mut self, records: Vec<Record>, active: Option<String>) -> Result<(), String> {
+        self.publish_removing(records, active, &[])
+    }
+
+    fn publish_removing(
+        &mut self,
+        records: Vec<Record>,
+        active: Option<String>,
+        removed: &[(String, String)],
+    ) -> Result<(), String> {
         self.check_catalog()?;
         let raw = encode_catalog(&records, active.as_deref());
-        atomic_replace(&self.dir.join("catalog.tsv.bak"), &self.catalog)?;
+        let backup = if removed.is_empty() {
+            self.catalog.clone()
+        } else {
+            let ids: HashSet<_> = removed.iter().map(|(id, _)| id.as_str()).collect();
+            let mut previous = self.records.clone();
+            previous.retain(|r| !ids.contains(r.memo.id.as_str()));
+            let previous_active = match self.active.as_deref() {
+                Some(id) if ids.contains(id) => newest_active(&previous),
+                _ => self.active.clone(),
+            };
+            encode_catalog(&previous, previous_active.as_deref())
+        };
+        atomic_replace(&self.dir.join("catalog.tsv.bak"), &backup)?;
         self.check_catalog()?;
         atomic_replace(&self.dir.join("catalog.tsv"), &raw)?;
         self.records = records;
         self.active = active;
         self.catalog = raw;
+        // Publish first so interruption or a failed unlink can leave only an
+        // unlisted file, never a catalog entry whose text is missing.
+        for (id, text) in removed {
+            let path = self.memo_path(id);
+            if require_directory(&self.dir.join("memos")).is_ok()
+                && read_regular(&path).is_ok_and(|bytes| bytes == text.as_bytes())
+            {
+                let _ = fs::remove_file(path);
+            }
+        }
         Ok(())
     }
 }
@@ -780,7 +847,7 @@ mod tests {
         {
             let mut store = Store::open(directory.0.clone()).unwrap();
             assert_eq!(store.list(false)[0].title, "無題");
-            id = store.create().unwrap();
+            id = store.create(None).unwrap();
             let title = |store: &Store| {
                 store.list(false).into_iter().find(|m| m.id == id).unwrap().title
             };
@@ -855,7 +922,7 @@ mod tests {
         let mut store = Store::open(directory.0.clone()).unwrap();
         let first = store.active().unwrap();
         store.save(&first, "保存を保つ").unwrap();
-        let second = store.create().unwrap();
+        let second = store.create(None).unwrap();
         assert_eq!(store.active().as_deref(), Some(second.as_str()));
         store.archive(&second, true).unwrap();
         assert_eq!(store.active().as_deref(), Some(first.as_str()));
@@ -871,6 +938,34 @@ mod tests {
         assert_eq!(store.active().as_deref(), Some(first.as_str()));
         store.archive(&second, false).unwrap();
         assert_eq!(store.active().as_deref(), Some(first.as_str()));
+    }
+
+    #[test]
+    fn switching_discards_only_after_validating_the_target() {
+        let temp = Temp::new();
+        let mut store = Store::open(temp.0.clone()).unwrap();
+        let target = store.active().unwrap();
+        store.save(&target, "復元する本文").unwrap();
+        store.archive(&target, true).unwrap();
+        let discarded = store.create(None).unwrap();
+        let discarded_path = store.memo_path(&discarded);
+        let target_path = store.memo_path(&target);
+        fs::write(&target_path, "外部で変更").unwrap();
+        assert!(store.activate(&target, true, Some(&discarded)).is_err());
+        assert_eq!(store.active().as_deref(), Some(discarded.as_str()));
+        assert!(discarded_path.is_file());
+        assert_eq!(store.list(true).len(), 1);
+        fs::write(target_path, "復元する本文").unwrap();
+        assert_eq!(
+            store.activate(&target, true, Some(&discarded)).unwrap(),
+            "復元する本文"
+        );
+        assert!(!discarded_path.exists());
+        drop(store);
+        let reopened = Store::open(temp.0.clone()).unwrap();
+        assert_eq!(reopened.active().as_deref(), Some(target.as_str()));
+        assert_eq!(reopened.list(false).len(), 1);
+        assert!(reopened.list(true).is_empty());
     }
 
     #[test]
@@ -906,9 +1001,9 @@ mod tests {
         let mut store = Store::open(directory.0.clone()).unwrap();
         let id = store.active().unwrap();
         fs::write(directory.0.join("catalog.tsv"), "outside\n").unwrap();
-        assert!(store.create().is_err());
+        assert!(store.create(None).is_err());
         assert!(store.save(&id, "変更しない").is_err());
-        assert!(store.activate(&id).is_err());
+        assert!(store.activate(&id, false, None).is_err());
         assert_eq!(
             fs::read_to_string(directory.0.join("catalog.tsv")).unwrap(),
             "outside\n"

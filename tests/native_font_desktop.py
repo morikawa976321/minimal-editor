@@ -81,13 +81,15 @@ def child(folder, desktop):
         def settled():
             send(window, 0x8002, 0, 0)
             state = json.loads(report.read_text(encoding="utf-8"))
-            return state if not (state.get("saving") or state.get("busy") or state.get("dirty")) else None
+            if state["saving"] or state["busy"] or (state["dirty"] and state["text"].strip()):
+                return None
+            return state
 
         def replace(text):
             send(editor, 0xB1, 0, -1)
             value = C.create_unicode_buffer(text)
             send(editor, 0xC2, 1, C.cast(value, C.c_void_p).value)
-            return gui.eventually(settled, "Owned editor did not save")
+            return gui.eventually(settled, "Owned editor did not settle after replacement")
 
         # Same 20 logical px, actual GDI font selection and advance: not a
         # guessed threshold or just the control's default face name.

@@ -144,7 +144,7 @@ fn adopt(
             kept += 1;
             memo.id.clone()
         } else {
-            let id = target.create()?;
+            let id = target.create(None)?;
             target.save(&id, &source_text[&memo.id])?;
             if source_manual[&memo.id] {
                 target.rename(&id, &memo.title)?;
@@ -178,7 +178,7 @@ fn adopt(
             .find(|(id, _)| id == &active)
             .ok_or("Active mapping missing")?
             .1;
-        target.activate(destination)?;
+        target.activate(destination, false, None)?;
     }
     let final_count = all(&target).len();
     let mappings = mapping

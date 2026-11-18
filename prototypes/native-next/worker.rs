@@ -25,7 +25,10 @@ pub enum Request {
         text: String,
         generation: u64,
     },
-    Action(Action),
+    Action {
+        action: Action,
+        discard: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -109,9 +112,11 @@ impl Worker {
                             save_ms = started.elapsed().as_secs_f64() * 1000.0;
                             result
                         }
-                        Request::Action(action) => apply_action(&mut store, action).map(|value| {
-                            document = value;
-                        }),
+                        Request::Action { action, discard } => {
+                            apply_action(&mut store, action, discard.as_deref()).map(|value| {
+                                document = value;
+                            })
+                        }
                     };
                     let reply = Reply {
                         request,
@@ -150,21 +155,15 @@ impl Worker {
 fn apply_action(
     store: &mut Store,
     action: &Action,
+    discard: Option<&str>,
 ) -> Result<Option<(Option<String>, String)>, String> {
     match action {
         Action::Create => {
-            let id = store.create()?;
-            let text = store.text(&id)?;
-            Ok(Some((Some(id), text)))
+            let id = store.create(discard)?;
+            Ok(Some((Some(id), String::new())))
         }
         Action::Switch { id, restoring } => {
-            // Validate and obtain the complete target before publishing its
-            // activation. The UI must not discard its old buffer on an error.
-            let text = store.text(id)?;
-            if *restoring {
-                store.archive(id, false)?;
-            }
-            store.activate(id)?;
+            let text = store.activate(id, *restoring, discard)?;
             Ok(Some((Some(id.clone()), text)))
         }
         Action::Archive { id } => {
@@ -249,7 +248,9 @@ mod tests {
         }
     }
     fn action(worker: &Worker, action: Action) -> Reply {
-        worker.send(Request::Action(action)).unwrap();
+        worker
+            .send(Request::Action { action, discard: None })
+            .unwrap();
         let result = reply(worker);
         assert!(result.error.is_none(), "{:?}", result.error);
         result

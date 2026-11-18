@@ -64,7 +64,8 @@ def child(folder, desktop):
         def settled():
             value = raw_state()
             return value if (not value.get("saving") and not value.get("busy")
-                             and (not value["dirty"] or value["error"])) else None
+                             and (not value["dirty"] or not value["text"].strip()
+                                  or value["error"])) else None
         return gui.eventually(settled, "Native did not finish pending persistence")
 
     def key(vk, mods=0):
@@ -128,7 +129,7 @@ def child(folder, desktop):
         auto_named = state()
         assert next(m for m in auto_named["catalog"] if m["id"] == second_id)["title"] == "先頭行を編集"
         title_text(editor, "")
-        assert next(m for m in state()["catalog"] if m["id"] == second_id)["title"] == "無題"
+        assert state()["text"] == ""
         insert(editor, "二つ目のメモ")
         picker = key(0x50, 1)
         assert picker["picker"] == "normal" and len(picker["items"]) == 2
@@ -168,6 +169,41 @@ def child(folder, desktop):
         assert archived_picker["picker"] == "archived" and len(archived_picker["items"]) == 1
         restored = key(0x0D)
         assert restored["picker"] is None and restored["active"] == second_id and restored["text"] == "二つ目のメモ"
+        # Clear a saved memo, then open another. The blank buffer is never
+        # saved and the last saved nonempty text remains in recovery history.
+        disposable = key(0x4E, 1)
+        disposable_id = disposable["active"]
+        disposable_path = data / "memos" / (disposable_id + ".txt")
+        insert(editor, "消す前の本文")
+        written = state()
+        title_text(editor, "　\n\t")
+        blank = state()
+        assert not blank["text"].strip() and blank["saveCount"] == written["saveCount"], blank
+        assert disposable_path.read_text(encoding="utf-8") == "消す前の本文"
+        picker = key(0x50, 1)
+        at = next(i for i, memo in enumerate(picker["items"]) if memo["id"] == second_id)
+        for _ in range(picker["selected"] - at):
+            key(0x26)
+        for _ in range(at - picker["selected"]):
+            key(0x28)
+        switched = key(0x0D)
+        assert switched["active"] == second_id and switched["saveCount"] == written["saveCount"]
+        assert all(m["id"] != disposable_id for m in switched["catalog"] + switched["archives"])
+        assert not disposable_path.exists()
+        assert any(p.read_text(encoding="utf-8") == "消す前の本文"
+                   for p in (data / "history" / disposable_id).glob("*.txt"))
+        blank_id = key(0x4E, 1)["active"]
+        next_blank = key(0x4E, 1)
+        assert next_blank["active"] != blank_id
+        assert all(m["id"] != blank_id for m in next_blank["catalog"] + next_blank["archives"])
+        assert not (data / "memos" / (blank_id + ".txt")).exists()
+        picker = key(0x50, 1)
+        at = next(i for i, memo in enumerate(picker["items"]) if memo["id"] == second_id)
+        for _ in range(picker["selected"] - at):
+            key(0x26)
+        for _ in range(at - picker["selected"]):
+            key(0x28)
+        assert key(0x0D)["active"] == second_id
         title_text(editor, "本文を変えても手動の名前は残す")
         assert next(m for m in state()["catalog"] if m["id"] == second_id)["title"] == "名前を変更"
         assert key(0x50, 3)["picker"] == "archived"
@@ -262,7 +298,8 @@ def child(folder, desktop):
         gui.eventually(lambda: not launched_windows(), "Owned launched editor did not close")
         return {"passed": True, "desktop": desktop, "text_characters": len(text), "insert_and_save_ms": input_ms,
                 "body_memory": body_memory, "checks": ["native input and body Undo", "autosave", "current typography readback",
-                    "new memo initially untitled", "first-line automatic title and blank-first-line reset", "manual name survives body edits and restart",
+                    "new memo initially untitled", "first-line automatic title", "manual name survives body edits and restart",
+                    "switch and new memo discard a blank body without saving, preserving prior text in history",
                     "normal/archive modal", "IME title Enter guard", "rename/cancel", "archive/undo",
                     "restore and open", "outside click retained", "literal RTF roundtrip", "forced exit/reopen",
                     "all archived restores read-only body and creates again", "toast keyboard button",

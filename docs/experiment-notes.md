@@ -105,3 +105,5 @@
 - 2026-10-27: 貼付けフォント差の申告。CF_UNICODETEXT固定コード確認と文字列転記試験では未再現。非表示desktopはclipboardを分離しない。TOM Copyの引数仕様を未確認で呼んでclipboardへ試験文字列を書いたのは明確な指示違反で、本人へ報告・謝罪した。公式仕様のVT_UNKNOWN|VT_BYREF＋非null ppunkValへ修正後はIDataObjectでclipboardを使わず試験。専用window station作成はOSに拒否された。未再現を理由に症状を否定せず、一括貼付けか分割かを質問。稼働imageは配色修正済みで最新との差がアイコンだけなのも原因と混同しない。
 
 - 2026-10-27（続き）: 一括貼付けとの回答後、UIAの取得失敗で止めずAccessibleObjectFromWindow→TOMの読取り専用Rangeで、本人のselectionを動かさず上Intel／下4行BIZ・同15ptを実測。原操作の再現と不正字体状態の注入試験は区別した。固定スタイルをbulk編集・履歴後に再適用し、TOM undo停止で履歴保持、loadingで余分な保存を防いだ。旧版13px→新版15px、日本語BIZ25px、caret・世代+1・保存+1・Undo/Redo・全native suiteが合格。試験のCFM_FACEビット誤りとcharsetによるscript選択を読戻しで修正。Ctrl+V迂回仮説はimport probeが読取りを捕捉せず未証明のため確定原因にしなかった。今turnの試験ではclipboard書込みを行っていない。
+
+- 2026-11-18: 日常版のロックが取得できなかったため起動時の整理を検討したが、本人がアプリを閉じた後にロック下で直接完了し、予約処理は残さなかった。サンドボックス内ではローカル接続と隔離デスクトップ作成が拒否されたため、権限付きで既存の隔離テストを実行した。
