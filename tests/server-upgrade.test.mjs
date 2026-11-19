@@ -28,10 +28,10 @@ for(const oldProtocol of [undefined,2,3])test(`upgrade protocol ${oldProtocol??'
     assert.equal((await health()).pid,old.pid);
     const focusPath=path.join(scripts,'focus-editor.ps1');const realFocus=fs.readFileSync(focusPath,'utf8');
     fs.writeFileSync(focusPath,"param([switch]$ProbeOnly)\n'{\"found\":true}'\n");
-    await assert.rejects(exec('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(scripts,'upgrade-server.ps1'),'-ServerPid',String(old.pid)],{windowsHide:true}),/Close minimal-editor/);
+    await assert.rejects(exec('pwsh.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(scripts,'upgrade-server.ps1'),'-ServerPid',String(old.pid)],{windowsHide:true}),/Close minimal-editor/);
     assert.equal((await health()).pid,old.pid,'active editor keeps old server');
     fs.writeFileSync(focusPath,realFocus);
-    await assert.rejects(exec('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(scripts,'upgrade-server.ps1'),'-ServerPid',String(process.pid)],{windowsHide:true}),/Refusing to stop/);
+    await assert.rejects(exec('pwsh.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(scripts,'upgrade-server.ps1'),'-ServerPid',String(process.pid)],{windowsHide:true}),/Refusing to stop/);
     assert.equal((await health()).pid,old.pid);
     fs.writeFileSync(serverPath,fixture(4));
     await exec(process.execPath,[path.join(scripts,'bootstrap.mjs'),'--no-open'],{windowsHide:true});

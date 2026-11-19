@@ -17,7 +17,7 @@ const running=await status();
 if(running&&running.protocol!==4){
   const health=await(await fetch(`http://127.0.0.1:${config.port}/health`,{signal:AbortSignal.timeout(1000)})).json();
   if(health.app!=='minimal-editor-v0'||!Number.isSafeInteger(health.pid)||health.pid<=0)throw Error('Cannot identify the previous editor server safely.');
-  await promisify(execFile)('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(root,'scripts/upgrade-server.ps1'),'-ServerPid',String(health.pid)],{windowsHide:true});
+  await promisify(execFile)('pwsh.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(root,'scripts/upgrade-server.ps1'),'-ServerPid',String(health.pid)],{windowsHide:true});
 }
 if(!running||running.protocol!==4){
   const log=fs.openSync(path.join(work,'server.log'),'a');

@@ -34,8 +34,8 @@ Windows と Rust（`rustc`）が必要です。外部のクレートは使って
 ```powershell
 git clone https://github.com/morikawa976321/minimal-editor.git
 cd minimal-editor
-powershell -ExecutionPolicy Bypass -File scripts/build-native.ps1     # build/native-next.exe ができる
-powershell -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1  # スタートメニューに登録（任意）
+pwsh -ExecutionPolicy Bypass -File scripts/build-native.ps1     # build/native-next.exe ができる
+pwsh -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1  # スタートメニューに登録（任意）
 ```
 
 登録すると、Win キー → `minimal-editor` → Enter で開きます。登録しない場合は `ネイティブ版.vbs` を開きます。

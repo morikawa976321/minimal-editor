@@ -65,7 +65,7 @@
 
 ## 再構築と検証
 
-`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-native.ps1`。既存Rustだけを使い、crate・GUIランタイム・追加パッケージの導入はない。製品の実行にはRustのインストールは不要。生成物は `build/native-next.exe`（Git対象外）。
+`pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-native.ps1`。既存Rustだけを使い、crate・GUIランタイム・追加パッケージの導入はない。製品の実行にはRustのインストールは不要。生成物は `build/native-next.exe`（Git対象外）。
 
 `scripts/test-native.ps1` は保存・初回コピー・起動API・実GUIの隔離試験を直列実行する。GUI試験は非表示の専用desktopで、本人の画面・キーボード・クリップボードを使わない。実IME/Handyの本人試用と同一とは扱わない。
 

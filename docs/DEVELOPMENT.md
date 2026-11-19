@@ -35,11 +35,11 @@ AIと独立して一人で文章を書くための、設定機能すら持たな
 普段の起動はWindowsのVBSから構築済みexeを直接実行する。Rustは再構築用で、実行には不要。ブラウザ版には既存Node 24・Edge・PowerShellを使う。追加の依存パッケージはない。PythonはGUI検証と旧Cに使う。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/build-native.ps1
-powershell -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1
+pwsh -ExecutionPolicy Bypass -File scripts/build-native.ps1
+pwsh -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1
 ```
 
 `install-shortcut.ps1` はスタートメニューに `minimal-editor.lnk` を1個作る。旧比較用 `Minimal Editor.lnk` がこのリポジトリのものと確認できた場合だけ置き換える。
-比較版を再構築する場合は `powershell -ExecutionPolicy Bypass -File scripts/build.ps1`。比較ページは `node scripts/bootstrap.mjs --compare`。
-ネイティブの再現試験は `powershell -ExecutionPolicy Bypass -File scripts/test-native.ps1`。ブラウザ版と旧試作の再現試験は `scripts/test.ps1`。GUI は非表示、テスト本文は `.work` に隔離。
+比較版を再構築する場合は `pwsh -ExecutionPolicy Bypass -File scripts/build.ps1`。比較ページは `node scripts/bootstrap.mjs --compare`。
+ネイティブの再現試験は `pwsh -ExecutionPolicy Bypass -File scripts/test-native.ps1`。ブラウザ版と旧試作の再現試験は `scripts/test.ps1`。GUI は非表示、テスト本文は `.work` に隔離。
 測定条件と限界は [検証記録](verification.md)、判断は [判断ログ](decisions.md) を参照。

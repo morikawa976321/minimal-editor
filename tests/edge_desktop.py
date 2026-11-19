@@ -50,7 +50,7 @@ def child(folder, expected_desktop):
         + f"fs.appendFileSync({json.dumps(str(counter))},'launch\\n');\n"
         + f"await import({json.dumps((isolated / 'scripts/bootstrap.mjs').as_uri())});\n",
         encoding="utf-8")
-    powershell = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]
+    powershell = ["pwsh.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]
     launch = powershell + [str(isolated / "scripts/launch-editor.ps1"), "-BootstrapScript", str(fixture),
                            "-ProfilePath", str(profile), "-Title", "minimal-editor", "-NoLegacyTitle"]
     sequence = 0
